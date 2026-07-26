@@ -10,7 +10,7 @@ This is the **build-state + next-steps** document. For the *design intent* (what
 
 ## 0. TL;DR
 
-We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact Cell, Follow Up Officer, Follow Up Team) for tracking "guests" through outreach → follow-up → integration — on a fresh **Laravel 12 + Inertia + React 19 + Breeze + Spatie Permission/Activitylog** stack. The MySQL 8.4 DB (`impact_guest` on localhost, user `ipcDBurs22`) is bootstrapped and live. **Phases 02 → 05 are green (40 / 14 / 28 / 18 verification assertions all passing).** Next up is **Phase 06** (Follow Up Team group).
+We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact Cell, Follow Up Officer, Follow Up Team) for tracking "guests" through outreach → follow-up → integration — on a fresh **Laravel 12 + Inertia + React 19 + Breeze + Spatie Permission/Activitylog** stack. The MySQL 8.4 DB (`impact_guest` on localhost, user `ipcDBurs22`) is bootstrapped and live. **Phases 02 → 05 are green (58 / 15 / 36 / 22 sub-assertions all passing — see §1 for per-phase detail).** Next up is **Phase 06** (Follow Up Team group).
 
 ---
 
@@ -22,8 +22,8 @@ We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact 
 | 01 Foundation | `Phase_01_Foundation.md` | ✅ Done — Laravel 12.64.0 + Breeze + Spatie scaffold, `.env` configured, `storage:link` created, all baseline migrations applied |
 | 02 Auth + Users | `Phase_02_Auth_And_Users.md` | ✅ **Done** — 9 roles seeded, `sbcadmin@impact.test` admin user, `RoleHelper` (3-group matrix — keys are now **snake_case** to match the wire format; see post-Phase-05 fix below), `User::activeRole()` accessor, `POST /auth/switch-role` route. **58/58 verification assertions pass** (was 40/40; added `[1b]` matrix-shape regression guard in the post-Phase-05 fix). |
 | 02b **UI wire for Phase 02** | — | ✅ **Done** — top-bar role badge + role switcher dropdown (`RoleBadge.tsx`, `RoleSwitcher.tsx`), `HandleInertiaRequests` shares `auth.user.{activeRole,roles,hasMultipleRoles}`, stub pages render without 500. |
-| 03 Impact Cell hierarchy | `Phase_03_Impact_Cell_Model.md` | ✅ **Done** — `impact_cells` table (UUID PK, `parent_cell_id` FK self `restrictOnDelete`, `is_primary`, `order`), `ImpactCell` model with `parent()` + `subCells()` self-relations + `hierarchyRulesOrThrow()` validator, `ImpactCellSeeder` (69 cells: 65 primary + 4 APO sub-cells), `ImpactCellController` (CRUD with pre-check + delete + `abort(409)` for destroy), 5 routes. **15/15 verification assertions pass** (added 1 case matrix-shape check to mirror the Phase 02 [1b] snake_case guard after the fix). |
-| 04 Guest CRUD + column policy | `Phase_04_Guest_Records_Core.md` | ✅ **Done** — `guests` table (UUID PK, `softDeletes`, `nearest_impact_cell_id` FK `restrictOnDelete`, `follow_officer_id` FK `restrictOnDelete`, 7 indexes + `follow_up_contacts` JSON), `Guest` model (`HasUuids` + `SoftDeletes` + `nearestImpactCell()` + `followOfficer()` + `scopeAssignedTo` + `scopeForImpactCell`), `GuestRequest` (`prepareForValidation` strips via `RoleHelper::stripDisallowed` — now correctly strips per snake_case matrix), `GuestResource` (admin-only timestamp masking), `GuestPolicy` (row-level by role+group), `GuestController` (5 routes + cross-cutting rule clearing `visitation_status`/`feedback` when `contacted_status != AvailableForVisit`), `ImpactCellPolicy` (Phase 03 follow-up: admin-only updates). **36/36 verification assertions pass** (was 28/28; added `[21]` snake_case policy guard). |
+| 03 Impact Cell hierarchy | `Phase_03_Impact_Cell_Model.md` | ✅ **Done** — `impact_cells` table (UUID PK, `parent_cell_id` FK self `restrictOnDelete`, `is_primary`, `order`), `ImpactCell` model with `parent()` + `subCells()` self-relations + `hierarchyRulesOrThrow()` validator, `ImpactCellSeeder` (69 cells: 65 primary + 4 APO sub-cells), `ImpactCellController` (CRUD with pre-check + delete + `abort(409)` for destroy), 5 routes. **15/15 sub-assertions pass** (Phase 03 verifier impl has 7 numbered cases; `[2]` (count split) + `[3]` (hierarchy invariant) + `[5]` (controller 409 path) + `[6]` (idempotency) are all multi-check, hence 15 total. No Phase-02-style `[1b]` shape guard was added — coverage gained from earlier split-into-sub-checks refactors). |
+| 04 Guest CRUD + column policy | `Phase_04_Guest_Records_Core.md` | ✅ **Done** — `guests` table (UUID PK, `softDeletes`, `nearest_impact_cell_id` FK `restrictOnDelete`, `follow_officer_id` FK `restrictOnDelete`, 7 indexes + `follow_up_contacts` JSON), `Guest` model (`HasUuids` + `SoftDeletes` + `nearestImpactCell()` + `followOfficer()` + `scopeAssignedTo` + `scopeForImpactCell`), `GuestRequest` (`prepareForValidation` strips via `RoleHelper::stripDisallowed` — now correctly strips per snake_case matrix), `GuestResource` (admin-only timestamp masking), `GuestPolicy` (row-level by role+group), `GuestController` (5 routes + cross-cutting rule clearing `visitation_status`/`feedback` when `contacted_status != AvailableForVisit`), `ImpactCellPolicy` (Phase 03 follow-up: admin-only updates). **36/36 sub-assertions pass** (Phase 04 verifier has 20 numbered cases; `[6]`/`[7]`/`[8]` (Form Request stripping per role) + `[12]`/`[13]` (GuestResource masking per role) each split into ~3 sub-checks, hence 36 total. No new `[21]` shape guard in this phase — the snake_case-shape regression guard lives in `verify_phase02_run.php` `[1b]` only). |
 | 04b **Local infrastructure** | — | ✅ **Done** — parent `.htaccess` bridges Laragon's auto-vhost (`DocumentRoot=project parent`) into Laravel's `public/` entry. Unconditional rewrite for non-`/public/` paths (so `composer.json`, `app/*`, `routes/*` etc. are never servable). Belt-and-suspenders `RedirectMatch 404 /\.(?!well-known/)` + `Options -Indexes`. |
 | 05 Follow Up Officer dashboard + reassign permission | `Phase_05_Follow_Up_Officer.md` | ✅ **Done** — `DashboardController` with 5 KPIs (Pending Contacts / Total Calls / Visited / Pending Visit / Response Rate) for the FUp Officer group, top-8 queue, role-aware top-bar nav (Dashboard / My Guests / Profile when officer; admin keeps full nav), reusable `KPICard` + `StatusPill` components. `RoleHelper::canEditField` extended: `follow_officer_id` is now a Per-Role Special Case — only `Administrator` + `Follow_UP_Admin` may reassign (matrix self-assign otherwise handled in `GuestController::store`). Officer dashboard variant in `Pages/Dashboard.tsx`. **`FollowUpOfficerSeeder`** seeds `officer1@impact.test` (FollowUpOfficer, 5 guests) + `followUpAdmin@impact.test` (Follow_UP_Admin, can reassign). **22/22 sub-assertions pass.** |
 | 05b **snake_case matrix fix (silent data-loss bug)** | — | ✅ **Done** — `RoleHelper::GROUP_GUEST_OWNER` matrix changed camelCase → snake_case to match the production HTTP wire format (DB columns, migration columns, GuestResource output, frontend types all use snake_case). Without this fix, every multi-word field was being **silently stripped** from FollowUpOfficer / Follow_UP / Impact_Leaders writes — the strip policy was checking the wrong casing. Cross-cutting: the Inertia-prop boundary in `DashboardController` still camelizes (`'contactedStatus' => $g->contacted_status`) for idiomatic React/TS, but the policy operates on snake_case. Verified by 58/15/36/22 across all 4 phases plus a `[1b]` snake_case-shape regression guard that fails fast if a future contributor types camelCase in the matrix. |
@@ -35,7 +35,7 @@ We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact 
 | 11 Reports + Audit | `Phase_11_Reports_And_Audit.md` | ⏳ Pending |
 | 12 Deployment | `Phase_12_Deployment.md` | ⏳ Pending |
 
-**Last verified green: Phase 02 (58/58) + Phase 03 (15/15) + Phase 04 (36/36) + Phase 05 (22/22), 2026-07-26** (counts grew from 40/14/28/18 in the post-Phase-05 snake_case-matrix follow-up — each added assertion is the snake_case-shape regression guard `[1b] / matrix-shape / [21]` that fails fast if a future contributor types camelCase in the matrix).
+**Last verified green: Phase 02 (58/58) + Phase 03 (15/15) + Phase 04 (36/36) + Phase 05 (22/22), 2026-07-26** (the only new assertion ADDED in the post-Phase-05 snake_case-matrix commit is the 18-row `[1b]` shape guard in `verify_phase02_run.php`. Phase 03 + Phase 04 grew their counts in earlier refactors that split numbered cases into multiple sub-assertions `[6]/[7]/[8]/[12]/[13]` — not from the snake_case commit).
 - `scripts/verify_phase02_run.php` — source of truth for Phase 02 — runs the auth + RBAC + RoleHelper + active-role checks.
 - `scripts/verify_phase03_run.php` — source of truth for Phase 03 — runs the impact_cell hierarchy + seeder idempotency checks.
 - `scripts/verify_phase04_run.php` — source of truth for Phase 04 — runs the guest FK + Form Request stripping + Resource masking + Policy + ImpactCellPolicy checks.
@@ -230,16 +230,17 @@ impact_portal_plus/
 ## 7. Verification (must stay green)
 
 ```bash
-# Phase 02 — 40-assertion regression net — exits non-zero on any regression
+# Phase 02 — 58-sub-assertion regression net — exits non-zero on any regression
+#   (includes [1b]: 18-row snake_case-shape guard covering every GROUP_GUEST_OWNER key)
 php scripts/verify_phase02_run.php
 
-# Phase 03 — 14-assertion regression net — asserts hierarchy + split + idempotency
+# Phase 03 — 15-sub-assertion regression net — asserts hierarchy + split + idempotency
 php scripts/verify_phase03_run.php
 
-# Phase 04 — 28-assertion regression net — guests FK + prepareForValidation stripping + Resource masking + Policy
+# Phase 04 — 36-sub-assertion regression net — guests FK + prepareForValidation stripping + Resource masking + Policy
 php scripts/verify_phase04_run.php
 
-# Phase 05 — 18-assertion regression net — officer KPIs + reassign permission + nav scoping
+# Phase 05 — 22-sub-assertion regression net — officer KPIs + reassign permission + nav scoping
 php scripts/verify_phase05_run.php
 
 # Probe — confirms the 'hashed' cast fires for the seeded admin password
