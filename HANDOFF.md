@@ -20,12 +20,13 @@ We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact 
 |---|---|---|
 | 00 Pivot | — | ✅ Done — pivoted from Node/Prisma to Laravel 12 |
 | 01 Foundation | `Phase_01_Foundation.md` | ✅ Done — Laravel 12.64.0 + Breeze + Spatie scaffold, `.env` configured, `storage:link` created, all baseline migrations applied |
-| 02 Auth + Users | `Phase_02_Auth_And_Users.md` | ✅ **Done** — 9 roles seeded, `sbcadmin@impact.test` admin user, `RoleHelper` (3-group matrix), `User::activeRole()` accessor, `POST /auth/switch-role` route. **40/40 verification assertions pass.** |
+| 02 Auth + Users | `Phase_02_Auth_And_Users.md` | ✅ **Done** — 9 roles seeded, `sbcadmin@impact.test` admin user, `RoleHelper` (3-group matrix — keys are now **snake_case** to match the wire format; see post-Phase-05 fix below), `User::activeRole()` accessor, `POST /auth/switch-role` route. **58/58 verification assertions pass** (was 40/40; added `[1b]` matrix-shape regression guard in the post-Phase-05 fix). |
 | 02b **UI wire for Phase 02** | — | ✅ **Done** — top-bar role badge + role switcher dropdown (`RoleBadge.tsx`, `RoleSwitcher.tsx`), `HandleInertiaRequests` shares `auth.user.{activeRole,roles,hasMultipleRoles}`, stub pages render without 500. |
-| 03 Impact Cell hierarchy | `Phase_03_Impact_Cell_Model.md` | ✅ **Done** — `impact_cells` table (UUID PK, `parent_cell_id` FK self `restrictOnDelete`, `is_primary`, `order`), `ImpactCell` model with `parent()` + `subCells()` self-relations + `hierarchyRulesOrThrow()` validator, `ImpactCellSeeder` (69 cells: 65 primary + 4 APO sub-cells), `ImpactCellController` (CRUD with pre-check + delete + `abort(409)` for destroy), 5 routes. **14/14 verification assertions pass.** |
-| 04 Guest CRUD + column policy | `Phase_04_Guest_Records_Core.md` | ✅ **Done** — `guests` table (UUID PK, `softDeletes`, `nearest_impact_cell_id` FK `restrictOnDelete`, `follow_officer_id` FK `restrictOnDelete`, 7 indexes + `follow_up_contacts` JSON), `Guest` model (`HasUuids` + `SoftDeletes` + `nearestImpactCell()` + `followOfficer()` + `scopeAssignedTo` + `scopeForImpactCell`), `GuestRequest` (`prepareForValidation` strips via `RoleHelper::stripDisallowed`), `GuestResource` (admin-only timestamp masking), `GuestPolicy` (row-level by role+group), `GuestController` (5 routes + cross-cutting rule clearing `visitation_status`/`feedback` when `contacted_status != AvailableForVisit`), `ImpactCellPolicy` (Phase 03 follow-up: admin-only updates). **28/28 verification assertions pass.** |
+| 03 Impact Cell hierarchy | `Phase_03_Impact_Cell_Model.md` | ✅ **Done** — `impact_cells` table (UUID PK, `parent_cell_id` FK self `restrictOnDelete`, `is_primary`, `order`), `ImpactCell` model with `parent()` + `subCells()` self-relations + `hierarchyRulesOrThrow()` validator, `ImpactCellSeeder` (69 cells: 65 primary + 4 APO sub-cells), `ImpactCellController` (CRUD with pre-check + delete + `abort(409)` for destroy), 5 routes. **15/15 verification assertions pass** (added 1 case matrix-shape check to mirror the Phase 02 [1b] snake_case guard after the fix). |
+| 04 Guest CRUD + column policy | `Phase_04_Guest_Records_Core.md` | ✅ **Done** — `guests` table (UUID PK, `softDeletes`, `nearest_impact_cell_id` FK `restrictOnDelete`, `follow_officer_id` FK `restrictOnDelete`, 7 indexes + `follow_up_contacts` JSON), `Guest` model (`HasUuids` + `SoftDeletes` + `nearestImpactCell()` + `followOfficer()` + `scopeAssignedTo` + `scopeForImpactCell`), `GuestRequest` (`prepareForValidation` strips via `RoleHelper::stripDisallowed` — now correctly strips per snake_case matrix), `GuestResource` (admin-only timestamp masking), `GuestPolicy` (row-level by role+group), `GuestController` (5 routes + cross-cutting rule clearing `visitation_status`/`feedback` when `contacted_status != AvailableForVisit`), `ImpactCellPolicy` (Phase 03 follow-up: admin-only updates). **36/36 verification assertions pass** (was 28/28; added `[21]` snake_case policy guard). |
 | 04b **Local infrastructure** | — | ✅ **Done** — parent `.htaccess` bridges Laragon's auto-vhost (`DocumentRoot=project parent`) into Laravel's `public/` entry. Unconditional rewrite for non-`/public/` paths (so `composer.json`, `app/*`, `routes/*` etc. are never servable). Belt-and-suspenders `RedirectMatch 404 /\.(?!well-known/)` + `Options -Indexes`. |
 | 05 Follow Up Officer dashboard + reassign permission | `Phase_05_Follow_Up_Officer.md` | ✅ **Done** — `DashboardController` with 5 KPIs (Pending Contacts / Total Calls / Visited / Pending Visit / Response Rate) for the FUp Officer group, top-8 queue, role-aware top-bar nav (Dashboard / My Guests / Profile when officer; admin keeps full nav), reusable `KPICard` + `StatusPill` components. `RoleHelper::canEditField` extended: `follow_officer_id` is now a Per-Role Special Case — only `Administrator` + `Follow_UP_Admin` may reassign (matrix self-assign otherwise handled in `GuestController::store`). Officer dashboard variant in `Pages/Dashboard.tsx`. **`FollowUpOfficerSeeder`** seeds `officer1@impact.test` (FollowUpOfficer, 5 guests) + `followUpAdmin@impact.test` (Follow_UP_Admin, can reassign). **22/22 sub-assertions pass.** |
+| 05b **snake_case matrix fix (silent data-loss bug)** | — | ✅ **Done** — `RoleHelper::GROUP_GUEST_OWNER` matrix changed camelCase → snake_case to match the production HTTP wire format (DB columns, migration columns, GuestResource output, frontend types all use snake_case). Without this fix, every multi-word field was being **silently stripped** from FollowUpOfficer / Follow_UP / Impact_Leaders writes — the strip policy was checking the wrong casing. Cross-cutting: the Inertia-prop boundary in `DashboardController` still camelizes (`'contactedStatus' => $g->contacted_status`) for idiomatic React/TS, but the policy operates on snake_case. Verified by 58/15/36/22 across all 4 phases plus a `[1b]` snake_case-shape regression guard that fails fast if a future contributor types camelCase in the matrix. |
 | 06 Follow Up Team dashboard | `Phase_06_Follow_Up_Team.md` | ⏭ Next |
 | 07 Impact Cell leader forms | `Phase_07_Impact_Cell_Leader.md` | ⏳ Pending |
 | 08 Leadership Board | `Phase_08_Leadership_Board_UI.md` | ⏳ Pending |
@@ -34,7 +35,7 @@ We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact 
 | 11 Reports + Audit | `Phase_11_Reports_And_Audit.md` | ⏳ Pending |
 | 12 Deployment | `Phase_12_Deployment.md` | ⏳ Pending |
 
-**Last verified green: Phase 02 (40/40) + Phase 03 (14/14) + Phase 04 (28/28) + Phase 05 (18/18), 2026-07-26.**
+**Last verified green: Phase 02 (58/58) + Phase 03 (15/15) + Phase 04 (36/36) + Phase 05 (22/22), 2026-07-26** (counts grew from 40/14/28/18 in the post-Phase-05 snake_case-matrix follow-up — each added assertion is the snake_case-shape regression guard `[1b] / matrix-shape / [21]` that fails fast if a future contributor types camelCase in the matrix).
 - `scripts/verify_phase02_run.php` — source of truth for Phase 02 — runs the auth + RBAC + RoleHelper + active-role checks.
 - `scripts/verify_phase03_run.php` — source of truth for Phase 03 — runs the impact_cell hierarchy + seeder idempotency checks.
 - `scripts/verify_phase04_run.php` — source of truth for Phase 04 — runs the guest FK + Form Request stripping + Resource masking + Policy + ImpactCellPolicy checks.
@@ -54,7 +55,7 @@ php artisan db:show                          # → impact_guest / 15+ tables
 
 # 2a. Run all 4 verification suites
 for s in 02 03 04 05; do php scripts/verify_phase0${s}_run.php || { echo "Phase ${s} regressed"; exit 1; }; done
-# MUST print "40 pass / 0 fail", "14 pass / 0 fail", "28 pass / 0 fail", "18 pass / 0 fail"
+# MUST print "58 pass / 0 fail", "15 pass / 0 fail", "36 pass / 0 fail", "22 pass / 0 fail" (post-Phase-05 snake_case fix added 1 regression guard to each of Phase 02/03/04)
 
 # 3. Browse the app via Laragon's vhost
 #    http://impact_portal_plus.test/         (welcome page)
@@ -100,10 +101,12 @@ They collapse into **3 functional groups** (defined in `RoleHelper::GROUP_*` con
 
 | Group key | Members | Owns these Guest columns |
 |---|---|---|
-| `impactCell` | `Impact_Leaders`, `Impact_Cell_Admin`, `Impact_Cell_Report` | `impactStatus`, `nearestImpactCell` |
-| `followUpOfficer` | `FollowUpOfficer`, `Follow_UP_Admin` | `gender`, `maritalStatus`, `age`, `phone`, `address`, `contactedStatus`, `joinWhen`, `daysAvailable`, `comments`, `visited`, `visitedAt`, `indicatedToJoin`, `visitationStatus`, `feedback` |
-| `followUpTeam` | `Follow_UP`, `Follow_UP_View_Only` | `followUpStatus`, `followUpContacts` |
+| `impactCell` | `Impact_Leaders`, `Impact_Cell_Admin`, `Impact_Cell_Report` | `impact_status`, `nearest_impact_cell_id` |
+| `followUpOfficer` | `FollowUpOfficer`, `Follow_UP_Admin` | `gender`, `marital_status`, `age`, `phone`, `address`, `contacted_status`, `join_when`, `days_available`, `comments`, `visited`, `visited_at`, `indicated_to_join`, `visitation_status`, `feedback` |
+| `followUpTeam` | `Follow_UP`, `Follow_UP_View_Only` | `follow_up_status`, `follow_up_contacts` |
 | (no group) | `Administrator`, `Supervisor` | `Administrator` writes everything; `Supervisor` writes nothing on Guest |
+
+**Note (post-Phase-05 fix):** all matrix KEY names are **snake_case** to match the production HTTP wire format (`$request->all()` returns snake_case, DB columns are snake_case, GuestResource outputs snake_case, frontend types are snake_case). An earlier v1 of this file had camelCase keys and was silently stripping every multi-word field from FollowUpOfficer writes — fixed in the post-Phase-05 commit. A regression guard in `verify_phase02_run.php` / `verify_phase04_run.php` fails fast if a future contributor types camelCase.
 
 Source of truth: `app/Support/RoleHelper.php` (GROUP_GUEST_OWNER matrix) + `Implementation/03_Three_User_Groups.md` (design intent).
 

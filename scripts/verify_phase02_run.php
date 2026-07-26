@@ -35,6 +35,16 @@ echo "[1] roles seeded\n";
 $count = Role::count();
 check("9 roles exist", $count === 9, "got {$count}");
 
+// Regression guard (1b): every key in GROUP_GUEST_OWNER must be snake_case.
+// Prevents recurrence of the post-Phase-05 silent-data-loss bug (matrix was
+// camelCase, HTTP body is snake_case → stripDisallowed dropped every
+// multi-word field from FollowUpOfficer writes).
+foreach (Illuminate\Support\Arr::flatten(RoleHelper::GROUP_GUEST_OWNER) as $field) {
+    check("[1b] matrix key '{$field}' is snake_case",
+        (bool) preg_match('/^[a-z][a-z0-9_]*$/', $field),
+        'camelCase or non-snake_case keys silently strip fields in production');
+}
+
 $expectedNames = [
     'Administrator', 'FollowUpOfficer', 'Follow_UP',
     'Follow_UP_Admin', 'Follow_UP_View_Only',
@@ -90,16 +100,18 @@ foreach ($cases as [$role, $expected]) {
 }
 
 // 4. RoleHelper::canEditField policy
+//    Keys are snake_case to match the production HTTP wire format
+//    (per RoleHelper::GROUP_GUEST_OWNER — single source of truth).
 echo "\n[4] RoleHelper::canEditField column policy\n";
 $policyCases = [
     ['Administrator',     'comments',     true],
     ['Administrator',     'unknownField', true],
     ['FollowUpOfficer',   'comments',     true],
-    ['FollowUpOfficer',   'followUpStatus', false],
-    ['FollowUpOfficer',   'impactStatus', false],
-    ['Follow_UP',         'followUpStatus', true],
+    ['FollowUpOfficer',   'follow_up_status', false],
+    ['FollowUpOfficer',   'impact_status', false],
+    ['Follow_UP',         'follow_up_status', true],
     ['Follow_UP',         'phone',        false],
-    ['Impact_Leaders',    'impactStatus', true],
+    ['Impact_Leaders',    'impact_status', true],
     ['Supervisor',        'comments',     false],
     [null,                'comments',     false],
     ['NoSuchRole',        'phone',        false],
@@ -112,15 +124,16 @@ foreach ($policyCases as [$role, $field, $expected]) {
 }
 
 // 5. stripDisallowed
+//    Body keys are snake_case to match the production HTTP wire format.
 echo "\n[5] RoleHelper::stripDisallowed\n";
-$body = ['name' => 'A', 'phone' => '555', 'comments' => 'hi', 'impactStatus' => 'pending', 'followUpStatus' => 'pending'];
+$body = ['name' => 'A', 'phone' => '555', 'comments' => 'hi', 'impact_status' => 'pending', 'follow_up_status' => 'pending'];
 $strippedAdmin = RoleHelper::stripDisallowed('Administrator', $body);
 check("Admin: pass-through", $strippedAdmin === $body, 'got ' . json_encode($strippedAdmin));
 
 $strippedOfficer = RoleHelper::stripDisallowed('FollowUpOfficer', $body);
 // `name` is intentionally NOT in the per-group matrix — it's set at create-time by Impact Cell Leaders.
 $expectedOfficer = ['phone' => '555', 'comments' => 'hi'];
-check("FollowUpOfficer keeps ONLY officer fields (drops name/impactStatus/followUpStatus)",
+check("FollowUpOfficer keeps ONLY officer fields (drops name/impact_status/follow_up_status)",
     $strippedOfficer === $expectedOfficer,
     'got ' . json_encode($strippedOfficer));
 
@@ -148,8 +161,8 @@ foreach ($routes as $r) {
 echo "\n[7] RoleHelper::allGroupOwnedFields\n";
 $all = RoleHelper::allGroupOwnedFields();
 check("union >= 10 field names", count($all) >= 10, 'got ' . count($all));
-check("includes impactStatus, followUpStatus, phone, gender",
-    in_array('impactStatus', $all) && in_array('followUpStatus', $all)
+check("includes impact_status, follow_up_status, phone, gender",
+    in_array('impact_status', $all) && in_array('follow_up_status', $all)
     && in_array('phone', $all) && in_array('gender', $all));
 
 echo "\n=== Summary: $pass pass / $fail fail ===\n";

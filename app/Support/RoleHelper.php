@@ -30,18 +30,30 @@ final class RoleHelper
 
     // ─────────────────────────────────────────────────────────────────────
     // Column-access matrix — derived from Implementation/03 § Column Policy
+    //
+    // Keys MUST be snake_case to match what Laravel's HTTP body actually
+    // sends (the DB columns are snake_case; the migration is snake_case;
+    // GuestResource output is snake_case; the frontend types are snake_case
+    // except for the Inertia boundary mapping in DashboardController).
+    //
+    // History: Phase 01 v1 of this file used camelCase keys by accident
+    // and the verifiers were written against the camelCase form. In
+    // production that meant every multi-word field was silently stripped
+    // from FollowUpOfficer / Team / Impact_Leaders writes. Fixed in the
+    // post-Phase-05 follow-up commit (matrix = single source of truth =
+    // snake_case to match the wire format).
     // ─────────────────────────────────────────────────────────────────────
     public const GROUP_GUEST_OWNER = [
-        self::GROUP_KEY_IMPACT_CELL       => ['impactStatus', 'nearestImpactCell'],
+        self::GROUP_KEY_IMPACT_CELL       => ['impact_status', 'nearest_impact_cell_id'],
         self::GROUP_KEY_FOLLOW_UP_OFFICER => [
-            'gender', 'maritalStatus', 'age',
+            'gender', 'marital_status', 'age',
             'phone', 'address',
-            'contactedStatus', 'joinWhen',
-            'daysAvailable', 'comments',
-            'visited', 'visitedAt', 'indicatedToJoin',
-            'visitationStatus', 'feedback',
+            'contacted_status', 'join_when',
+            'days_available', 'comments',
+            'visited', 'visited_at', 'indicated_to_join',
+            'visitation_status', 'feedback',
         ],
-        self::GROUP_KEY_FOLLOW_UP_TEAM    => ['followUpStatus', 'followUpContacts'],
+        self::GROUP_KEY_FOLLOW_UP_TEAM    => ['follow_up_status', 'follow_up_contacts'],
     ];
 
     /** Resolve the group key for a role string. null = no group (e.g. Administrator, Supervisor). */

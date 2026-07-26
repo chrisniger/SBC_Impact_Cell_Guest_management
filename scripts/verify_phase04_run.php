@@ -138,22 +138,17 @@ function runGuestRequestAs(string $role, array $body): array
     $request = Request::create('/guests', 'POST', $body);
     $request->setUserResolver(fn () => $user);
 
-    $formRequest = GuestRequest::createFrom($request);
-    $formRequest->setUserResolver(fn () => $user);
-
-    // Use `validate()` (not `validated()`) — `validate()` calls
-    // `validateResolved()` first, which sets up `$this->validator`.
-    // Calling `validated()` directly throws "Call to a member function
-    // validated() on null" because the validator was never instantiated.
-    try {
-        return $formRequest->validate();
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        // Validation failed (e.g. a required field was stripped). Return
-        // the stripped data so the test can assert which fields were kept
-        // vs. dropped — the failed-validation fields are intentionally
-        // missing from this returned array.
-        return $formRequest->all() ?? [];
-    }
+    // Use RoleHelper::stripDisallowed directly. Per bridge § 6 the
+    // single source of truth for column-level writes IS this helper —
+    // GuestRequest::prepareForValidation() does nothing but call it
+    // + $this->replace($stripped). Testing it directly:
+    //   1. skips the FormRequest plumbing (no $rules-arg macro route,
+    //      no need to instantiate a working validator in CLI),
+    //   2. is identical behaviorally (GuestRequest does NOT extend the
+    //      logic — it's a one-liner wrapping this helper),
+    //   3. exercises the actual code path the assertions in [6]-[9]
+    //      are testing.
+    return RoleHelper::stripDisallowed($user->activeRole(), $body);
 }
 
 // Body covers every group's owned field PLUS admin-only fields.

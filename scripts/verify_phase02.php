@@ -65,12 +65,12 @@ $policyCases = [
     ['Administrator',     'comments',     true],
     ['Administrator',     'unknownField', true],
     ['FollowUpOfficer',   'comments',     true],
-    ['FollowUpOfficer',   'impactStatus', false],  // impactCell owns it
-    ['FollowUpOfficer',   'followUpStatus', false], // followUpTeam owns it
-    ['Follow_UP',         'followUpStatus', true],
-    ['Follow_UP',         'phone',        false],   // officer owns it
-    ['Impact_Leaders',    'impactStatus', true],
-    ['Supervisor',        'comments',     false],   // no group
+    ['FollowUpOfficer',   'impact_status', false],       // impactCell owns it
+    ['FollowUpOfficer',   'follow_up_status', false],    // followUpTeam owns it
+    ['Follow_UP',         'follow_up_status', true],
+    ['Follow_UP',         'phone',        false],        // officer owns it
+    ['Impact_Leaders',    'impact_status', true],
+    ['Supervisor',        'comments',     false],        // no group
     [null,                'comments',     false],
 ];
 $okPol = true;
