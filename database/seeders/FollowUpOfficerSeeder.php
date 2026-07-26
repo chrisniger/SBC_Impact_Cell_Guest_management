@@ -51,8 +51,13 @@ class FollowUpOfficerSeeder extends Seeder
         $officer1->syncRoles(['FollowUpOfficer']);
         $officer1->forceFill(['active_role' => 'FollowUpOfficer'])->save();
 
-        // Wipe prior fixture guests so the seeder is idempotent.
-        Guest::where('follow_officer_id', $officer1->id)->forceDelete();
+        // Wipe PRIOR fixture guests (idempotency) WITHOUT touching any
+        // real guests an admin may have assigned to officer1 between
+        // re-runs. The marker is `guest_name LIKE 'Officer1 Guest #%'`
+        // (set by this seeder below).
+        Guest::where('follow_officer_id', $officer1->id)
+            ->where('guest_name', 'like', 'Officer1 Guest #%')
+            ->forceDelete();
 
         $fixtures = [
             ['status' => null,               'visited' => false],

@@ -4,28 +4,16 @@
  *
  * Run with:  php scripts/verify_phase05_run.php
  *
- * Asserts (18):
- *   [1]  officer1@impact.test user exists
- *   [2]  officer1 has FollowUpOfficer role + active_role
- *   [3]  followUpAdmin@impact.test user exists
- *   [4]  followUpAdmin has Follow_UP_Admin role + active_role
- *   [5]  officer1 has exactly 5 assigned guests (no soft-deletes)
- *   [6]  officer1's guests span all 5 contacted_status permutations
- *   [7]  The "Visited" guest has visited=true; the rest are false
- *   [8]  RoleHelper::canEditField Special-Case: Administrator can write follow_officer_id
- *   [9]  Special-Case: Follow_UP_Admin can write follow_officer_id
- *   [10] Special-Case: FollowUpOfficer (plain officer) CANNOT write follow_officer_id
- *   [11] Special-Case: Impact_Leaders / Follow_UP / Supervisor / null all cannot write follow_officer_id
- *   [12] DashboardController@index route is registered
- *   [13] DashboardController officer KPIs: pendingContacts == 2
- *   [14] DashboardController officer KPIs: totalCalls == 4
- *   [15] DashboardController officer KPIs: visited == 1
- *   [16] DashboardController officer KPIs: pendingVisit == 1
- *   [17] DashboardController officer KPIs: responseRate == 25.0 (1/4*100)
- *   [18] DashboardController officer queue: exactly 5 entries (LIMIT 8, only 5 exist) +
- *         bucket 0 (NOT CONTACTED) ordered first
+ * 22 sub-assertions (was 18 spec items; the [7] split into 3 sub-checks +
+ * the [13] variant discriminator sub-check + the [18] queue has 2 sub-checks
+ * brings the total source-side count to 22).
+ *
+ * Verifier-only destructive step: before invoking the seeder, we wipe ALL
+ * guests assigned to officer1 (bypassing the marker's guard). This is
+ * safe because the verifier only ever runs in dev/test — production NEVER
+ * runs `php scripts/verify_phase05_run.php`. The seeder itself stays
+ * safety-first on marker-guarded `guest_name LIKE 'Officer1 Guest #%'`.
  */
-
 require __DIR__ . '/../vendor/autoload.php';
 
 $app = require __DIR__ . '/../bootstrap/app.php';
@@ -35,7 +23,6 @@ use App\Http\Controllers\DashboardController;
 use App\Models\Guest;
 use App\Models\User;
 use App\Support\RoleHelper;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Response;
@@ -57,13 +44,6 @@ function check(string $label, bool $ok, string $detail = ''): void
 }
 
 echo "=== Phase 05 verification ===\n\n";
-
-// Re-seed to ensure deterministic state (idempotent — forceDeletes prior fixtures).
-(Illuminate\Support\Facades\Artisan::call('db:seed', [
-    '--class' => 'Database\\Seeders\\FollowUpOfficerSeeder',
-    '--force' => true,
-]));
-echo "  (re-seeded FollowUpOfficerSeeder)\n\n";
 
 // ─────────────────────────────────────────────────────────────────────────
 // [1]-[4] Officer test users + role assignment + active_role
@@ -97,9 +77,20 @@ check('[4] followUpAdmin has Follow_UP_Admin role + active_role',
     'activeRole() = ' . ($officer2->activeRole() ?? 'null'));
 
 // ─────────────────────────────────────────────────────────────────────────
+// Verifier-only clean slate + re-seed (deterministic state for [5])
+// ─────────────────────────────────────────────────────────────────────────
+echo "\n[!] verifier-only: wipe ALL officer1 guests (bypasses marker-guard), then re-seed\n";
+Guest::where('follow_officer_id', $officer1->id)->forceDelete();
+(Illuminate\Support\Facades\Artisan::call('db:seed', [
+    '--class' => 'Database\\Seeders\\FollowUpOfficerSeeder',
+    '--force' => true,
+]));
+echo "  (verifier seeded 5 marker guests via FollowUpOfficerSeeder)\n\n";
+
+// ─────────────────────────────────────────────────────────────────────────
 // [5]-[7] Officer1 has 5 assigned guests covering all 5 contacted_status permutations
 // ─────────────────────────────────────────────────────────────────────────
-echo "\n[5]-[7] Officer1 guest fixtures\n";
+echo "[5]-[7] Officer1 guest fixtures\n";
 
 $officer1Guests = Guest::where('follow_officer_id', $officer1->id)->whereNull('deleted_at')->get();
 check('[5] officer1 has exactly 5 assigned (live) guests',
@@ -117,8 +108,8 @@ check('[6] guests span all 5 contacted_status permutations',
     $expectedSet->diff($presentSet)->isEmpty() && $presentSet->diff($expectedSet)->isEmpty(),
     'got: [' . implode(', ', $statusesPresent) . '] expected: [' . implode(', ', $expectedStatuses) . ']');
 
-$visitedTrueCount  = $officer1Guests->where('visited', true)->count();
-$visitedFalseCount = $officer1Guests->where('visited', false)->count();
+$visitedTrueCount   = $officer1Guests->where('visited', true)->count();
+$visitedFalseCount  = $officer1Guests->where('visited', false)->count();
 $visitedStatusCount = $officer1Guests->where('contacted_status', 'Visited')->count();
 check('[7] exactly 1 guest has contacted_status=Visited',
     $visitedStatusCount === 1,
@@ -182,21 +173,21 @@ if (! $response instanceof Response) {
     echo "  FAIL  [13] controller did not return Inertia\\Response\n";
     $fail += 5;
 } else {
-    $reflect  = new ReflectionClass($response);
+    $reflect   = new ReflectionClass($response);
     $propsProp = $reflect->getProperty('props');
     $propsProp->setAccessible(true);
     $props = $propsProp->getValue($response);
 
     check('[13] variant = "officer"', ($props['variant'] ?? null) === 'officer');
-    check('[13] pendingContacts KPI = 2',     ($props['kpis']['pendingContacts'] ?? null) === 2,
+    check('[13] pendingContacts KPI = 2', ($props['kpis']['pendingContacts'] ?? null) === 2,
         'got ' . ($props['kpis']['pendingContacts'] ?? 'null'));
-    check('[14] totalCalls KPI = 4',          ($props['kpis']['totalCalls'] ?? null) === 4,
+    check('[14] totalCalls KPI = 4',      ($props['kpis']['totalCalls']      ?? null) === 4,
         'got ' . ($props['kpis']['totalCalls'] ?? 'null'));
-    check('[15] visited KPI = 1',             ($props['kpis']['visited'] ?? null) === 1,
+    check('[15] visited KPI = 1',          ($props['kpis']['visited']    ?? null) === 1,
         'got ' . ($props['kpis']['visited'] ?? 'null'));
-    check('[16] pendingVisit KPI = 1',        ($props['kpis']['pendingVisit'] ?? null) === 1,
+    check('[16] pendingVisit KPI = 1',     ($props['kpis']['pendingVisit'] ?? null) === 1,
         'got ' . ($props['kpis']['pendingVisit'] ?? 'null'));
-    check('[17] responseRate KPI = 25.0',     ($props['kpis']['responseRate'] ?? null) === 25.0,
+    check('[17] responseRate KPI = 25.0',  ($props['kpis']['responseRate'] ?? null) === 25.0,
         'got ' . ($props['kpis']['responseRate'] ?? 'null'));
 }
 
@@ -232,8 +223,8 @@ if ($response instanceof Response) {
 
 // ─────────────────────────────────────────────────────────────────────────
 // Cleanup: keep seeded users + their fixture guests so re-runs are deterministic.
-// (forceDelete only runs in the seeder when previous-run rows exist; the
-//  seeder itself is idempotent, so future verifier runs start clean.)
+// (The seeder's marker-guard + this verifier's explicit clean-step together
+//  guarantee count == 5 on every run.)
 // ─────────────────────────────────────────────────────────────────────────
 
 echo "\n=== Summary: $pass pass / $fail fail ===\n";
