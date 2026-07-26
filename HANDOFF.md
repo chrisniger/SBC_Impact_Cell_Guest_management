@@ -163,8 +163,10 @@ impact_portal_plus/
 ├── config/permission.php   ← Spatie Permission config (copied from stub)
 ├── routes/web.php          ← has /auth/switch-role + 5 /impact-cells routes under auth middleware
 ├── scripts/
-│   ├── verify_phase02_run.php    ← 40-assertion Phase 02 verifier (run after every change)
-│   ├── verify_phase03_run.php    ← 14-assertion Phase 03 verifier (run after every change)
+│   ├── verify_phase02_run.php    ← 58-sub-assertion Phase 02 verifier (incl. [1b] snake_case-shape guard)
+│   ├── verify_phase03_run.php    ← 15-sub-assertion Phase 03 verifier (7 numbered cases, some multi-check)
+│   ├── verify_phase04_run.php    ← 36-sub-assertion Phase 04 verifier (20 numbered cases, guests FK + stripping + Resource + Policy)
+│   ├── verify_phase05_run.php    ← 22-sub-assertion Phase 05 verifier (officer KPIs + reassign + seeder idempotency)
 │   └── probe_password_hash.php   ← confirms the 'hashed' cast fires correctly
 ├── resources/js/
 │   ├── Components/RoleBadge.tsx               ← top-bar role badge (Phase 02 UI wire)
@@ -303,4 +305,4 @@ The full list is in `Implementation/00_Laravel_Bridge.md` § 7. The three that b
 
 ---
 
-*End of HANDOFF. Phase 04 awaits — see § 8.*
+*End of HANDOFF. Phase 06 (Follow Up Team dashboard) is next — see § 8.*
