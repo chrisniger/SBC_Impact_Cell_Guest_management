@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 
 interface GuestDetail {
     id: string;
@@ -32,7 +32,8 @@ interface GuestDetail {
     deleted_at: string | null;
 }
 
-export default function Show({ guest }: { guest: GuestDetail }) {
+export default function Show({ guest, editableFields }: { guest: GuestDetail; editableFields?: string[] }) {
+    const canEditAnything = (editableFields ?? []).length > 0;
     const Row = ({ label, value }: { label: string; value: string | null | undefined }) => (
         <div className="flex justify-between border-b border-gray-100 py-2 text-sm dark:border-gray-700">
             <dt className="font-medium text-gray-600 dark:text-gray-400">{label}</dt>
@@ -43,13 +44,24 @@ export default function Show({ guest }: { guest: GuestDetail }) {
     return (
         <AuthenticatedLayout
             header={
-                <div>
-                    <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
-                        {guest.guest_name}
-                    </h2>
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                        Guest details — column-level edit forms land in Phase 05.
-                    </p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
+                            {guest.guest_name}
+                        </h2>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            Read-only view. Use the edit page to make changes.
+                        </p>
+                    </div>
+                    {canEditAnything && (
+                        <Link
+                            href={route('guests.edit', guest.id)}
+                            className="inline-flex items-center rounded-md border border-transparent bg-gray-800 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white shadow-sm ring-gray-300 transition duration-150 ease-in-out hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-gray-200 dark:text-gray-800 dark:hover:bg-white"
+                            data-testid="edit-link"
+                        >
+                            Edit
+                        </Link>
+                    )}
                 </div>
             }
         >

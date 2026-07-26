@@ -83,8 +83,49 @@ class GuestController extends Controller
         $guest = Guest::with(['nearestImpactCell', 'followOfficer'])->findOrFail($id);
         $this->authorize('view', $guest);
 
+        // Pass `editableFields` to Show.tsx so the Edit link can be gated
+        // — users without update perms shouldn't see a button that 403s.
         return Inertia::render('Guests/Show', [
-            'guest' => GuestResource::make($guest)->resolve($request),
+            'guest'          => GuestResource::make($guest)->resolve($request),
+            'editableFields' => $this->computeEditableKeysForRole($request->user()?->activeRole()),
+        ]);
+    }
+
+    /**
+     * GET /guests/{id}/edit — Render the edit form (Phase 05 follow-up).
+     *
+     * Source-of-truth pattern: instead of hardcoding which fields each
+     * role can write in React, we run EVERY conceivable Guest writable
+     * field through `RoleHelper::stripDisallowed()` — the keys that
+     * survive are exactly what THIS user can write. The frontend then
+     * uses the same list to decide which inputs to render.
+     *
+     * This keeps the FE and BE in lockstep — if the matrix changes in
+     * `RoleHelper`, the form auto-adapts with zero React changes.
+     *
+     * Authorization uses `update` (which implies `view`) — only callers
+     * who could already save the row should reach the edit screen.
+     */
+    public function edit(Request $request, string $id): Response
+    {
+        $guest = Guest::findOrFail($id);
+        $this->authorize('update', $guest);
+
+        $user = $request->user();
+        $role = $user?->activeRole();
+        $editableKeys = $this->computeEditableKeysForRole($role);
+
+        // Only load the Impact Cell dropdown if the user can edit it.
+        // Saves an extra DB query for FollowUpOfficers.
+        $impactCells = in_array('nearest_impact_cell_id', $editableKeys, true)
+            ? \App\Models\ImpactCell::orderBy('name')->get(['id', 'name'])->toArray()
+            : [];
+
+        return Inertia::render('Guests/Edit', [
+            'guest'          => GuestResource::make($guest)->resolve($request),
+            'editableFields' => $editableKeys,
+            'impactCells'    => $impactCells,
+            'activeRole'     => $role,
         ]);
     }
 
@@ -148,6 +189,33 @@ class GuestController extends Controller
         return redirect()
             ->route('guests.index')
             ->with('success', "Guest {$name} deleted.");
+    }
+
+    /**
+     * Compute the universe of Guest columns this role may write.
+     *
+     * Single source of truth shared by `show()` (to gate the Edit link)
+     * and `edit()` (to drive the Edit form's reactive inputs). Both
+     * sites must derive the list the same way — if they drift, Show.tsx
+     * could show a button that 403s, or Edit.tsx could render inputs
+     * the role can't actually write.
+     *
+     * Algorithm: enumerate every conceivable writable field on Guest,
+     * then run it through `RoleHelper::stripDisallowed($role, ...)`.
+     * The keys that survive are exactly what `$role` may write.
+     *
+     * @return array<int, string>  snake_case column names
+     */
+    private function computeEditableKeysForRole(?string $role): array
+    {
+        $allPossible = array_merge(
+            RoleHelper::allGroupOwnedFields(),
+            ['guest_name', 'date', 'event', 'event_other', 'source', 'follow_officer_id']
+        );
+
+        return array_keys(
+            RoleHelper::stripDisallowed($role, array_fill_keys($allPossible, true))
+        );
     }
 
     /**
