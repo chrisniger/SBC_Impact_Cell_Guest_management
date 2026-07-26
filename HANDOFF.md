@@ -2,7 +2,7 @@
 
 > **Audience:** a developer (or AI assistant) joining this repo mid-build.
 > **Read time:** ~10 min to orient, ~30 min to feel competent.
-> **Last updated:** end of **Phase 03 + Phase 02 UI wire (2026-07-26)** — see § 1 for build state.
+> **Last updated:** end of **Phase 05 + .htaccess security fix (2026-07-26)** — see § 1 for build state.
 
 This is the **build-state + next-steps** document. For the *design intent* (what we're building and why), see `Plan/` and `Implementation/`. For the *technology mapping* (which Laravel package / idiom replaces which old-stack idea), see `Implementation/00_Laravel_Bridge.md`.
 
@@ -10,7 +10,7 @@ This is the **build-state + next-steps** document. For the *design intent* (what
 
 ## 0. TL;DR
 
-We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact Cell, Follow Up Officer, Follow Up Team) for tracking "guests" through outreach → follow-up → integration — on a fresh **Laravel 12 + Inertia + React 19 + Breeze + Spatie Permission/Activitylog** stack. The MySQL 8.4 DB (`impact_guest` on localhost, user `ipcDBurs22`) is bootstrapped and live. **Phase 02 (auth + users + 3-group RBAC + active-role switching) is fully green with 40/40 verification assertions passing.** Next up is **Phase 03** (Impact Cell hierarchy).
+We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact Cell, Follow Up Officer, Follow Up Team) for tracking "guests" through outreach → follow-up → integration — on a fresh **Laravel 12 + Inertia + React 19 + Breeze + Spatie Permission/Activitylog** stack. The MySQL 8.4 DB (`impact_guest` on localhost, user `ipcDBurs22`) is bootstrapped and live. **Phases 02 → 05 are green (40 / 14 / 28 / 18 verification assertions all passing).** Next up is **Phase 06** (Follow Up Team group).
 
 ---
 
@@ -23,18 +23,23 @@ We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact 
 | 02 Auth + Users | `Phase_02_Auth_And_Users.md` | ✅ **Done** — 9 roles seeded, `sbcadmin@impact.test` admin user, `RoleHelper` (3-group matrix), `User::activeRole()` accessor, `POST /auth/switch-role` route. **40/40 verification assertions pass.** |
 | 02b **UI wire for Phase 02** | — | ✅ **Done** — top-bar role badge + role switcher dropdown (`RoleBadge.tsx`, `RoleSwitcher.tsx`), `HandleInertiaRequests` shares `auth.user.{activeRole,roles,hasMultipleRoles}`, stub pages render without 500. |
 | 03 Impact Cell hierarchy | `Phase_03_Impact_Cell_Model.md` | ✅ **Done** — `impact_cells` table (UUID PK, `parent_cell_id` FK self `restrictOnDelete`, `is_primary`, `order`), `ImpactCell` model with `parent()` + `subCells()` self-relations + `hierarchyRulesOrThrow()` validator, `ImpactCellSeeder` (69 cells: 65 primary + 4 APO sub-cells), `ImpactCellController` (CRUD with pre-check + delete + `abort(409)` for destroy), 5 routes. **14/14 verification assertions pass.** |
-| 04 Guest CRUD + column policy | `Phase_04_Guest_Records_Core.md` | ⏭ Next |
-| 05–07 Dashboards (Officer / Team / Cell Leader) | `Phase_05..07_*.md` | ⏳ Pending |
+| 04 Guest CRUD + column policy | `Phase_04_Guest_Records_Core.md` | ✅ **Done** — `guests` table (UUID PK, `softDeletes`, `nearest_impact_cell_id` FK `restrictOnDelete`, `follow_officer_id` FK `restrictOnDelete`, 7 indexes + `follow_up_contacts` JSON), `Guest` model (`HasUuids` + `SoftDeletes` + `nearestImpactCell()` + `followOfficer()` + `scopeAssignedTo` + `scopeForImpactCell`), `GuestRequest` (`prepareForValidation` strips via `RoleHelper::stripDisallowed`), `GuestResource` (admin-only timestamp masking), `GuestPolicy` (row-level by role+group), `GuestController` (5 routes + cross-cutting rule clearing `visitation_status`/`feedback` when `contacted_status != AvailableForVisit`), `ImpactCellPolicy` (Phase 03 follow-up: admin-only updates). **28/28 verification assertions pass.** |
+| 04b **Local infrastructure** | — | ✅ **Done** — parent `.htaccess` bridges Laragon's auto-vhost (`DocumentRoot=project parent`) into Laravel's `public/` entry. Unconditional rewrite for non-`/public/` paths (so `composer.json`, `app/*`, `routes/*` etc. are never servable). Belt-and-suspenders `RedirectMatch 404 /\.(?!well-known/)` + `Options -Indexes`. |
+| 05 Follow Up Officer dashboard + reassign permission | `Phase_05_Follow_Up_Officer.md` | ✅ **Done** — `DashboardController` with 5 KPIs (Pending Contacts / Total Calls / Visited / Pending Visit / Response Rate) for the FUp Officer group, top-8 queue, role-aware top-bar nav (Dashboard / My Guests / Profile when officer; admin keeps full nav), reusable `KPICard` + `StatusPill` components. `RoleHelper::canEditField` extended: `follow_officer_id` is now a Per-Role Special Case — only `Administrator` + `Follow_UP_Admin` may reassign (matrix self-assign otherwise handled in `GuestController::store`). Officer dashboard variant in `Pages/Dashboard.tsx`. **`FollowUpOfficerSeeder`** seeds `officer1@impact.test` (FollowUpOfficer, 5 guests) + `followUpAdmin@impact.test` (Follow_UP_Admin, can reassign). **18/18 verification assertions pass.** |
+| 06 Follow Up Team dashboard | `Phase_06_Follow_Up_Team.md` | ⏭ Next |
+| 07 Impact Cell leader forms | `Phase_07_Impact_Cell_Leader.md` | ⏳ Pending |
 | 08 Leadership Board | `Phase_08_Leadership_Board_UI.md` | ⏳ Pending |
 | 09 Notifications + SMTP | `Phase_09_Notifications_SMTP.md` | ⏳ Pending |
 | 10 CSV import/export | `Phase_10_CSV_Import_Export.md` | ⏳ Pending |
 | 11 Reports + Audit | `Phase_11_Reports_And_Audit.md` | ⏳ Pending |
 | 12 Deployment | `Phase_12_Deployment.md` | ⏳ Pending |
 
-**Last verified green: Phase 02 (40/40) + Phase 03 (14/14), 2026-07-26.**
-- `scripts/verify_phase02_run.php` — source of truth for "is Phase 02 still green?" — run after every Phase 02 edit.
-- `scripts/verify_phase03_run.php` — source of truth for "is Phase 03 still green?" — run after every Phase 03 edit.
-- If either prints anything other than `N pass / 0 fail`, fix the regression before continuing.
+**Last verified green: Phase 02 (40/40) + Phase 03 (14/14) + Phase 04 (28/28) + Phase 05 (18/18), 2026-07-26.**
+- `scripts/verify_phase02_run.php` — source of truth for Phase 02 — runs the auth + RBAC + RoleHelper + active-role checks.
+- `scripts/verify_phase03_run.php` — source of truth for Phase 03 — runs the impact_cell hierarchy + seeder idempotency checks.
+- `scripts/verify_phase04_run.php` — source of truth for Phase 04 — runs the guest FK + Form Request stripping + Resource masking + Policy + ImpactCellPolicy checks.
+- `scripts/verify_phase05_run.php` — source of truth for Phase 05 — runs the officer KPI math + role-aware top-bar nav + reassign-permission + seeder idempotency checks.
+- If any prints anything other than `N pass / 0 fail`, fix the regression before continuing.
 
 ---
 
@@ -43,19 +48,22 @@ We're rebuilding the SBC Guest Management app — a 3-user-group portal (Impact 
 ```bash
 cd C:\laragon\www\impact_portal_plus
 
-# 1. Confirm Laravel boots and DB is reachable
+# 1. Confirm Laravel boots and DB is reachable (current APP_URL is http://impact_portal_plus.test)
 php artisan --version                        # → Laravel Framework 12.64.0
 php artisan db:show                          # → impact_guest / 15+ tables
 
-# 2. Run the Phase 02 verification suite — MUST print "40 pass / 0 fail"
-php scripts/verify_phase02_run.php
+# 2a. Run all 4 verification suites
+for s in 02 03 04 05; do php scripts/verify_phase0${s}_run.php || { echo "Phase ${s} regressed"; exit 1; }; done
+# MUST print "40 pass / 0 fail", "14 pass / 0 fail", "28 pass / 0 fail", "18 pass / 0 fail"
 
 # 3. Browse the app via Laragon's vhost
-#    http://impact-portal.test/         (welcome page)
-#    http://impact-portal.test/login    (Breeze login — sbcadmin@impact.test //Chris##101)
+#    http://impact_portal_plus.test/         (welcome page)
+#    http://impact_portal_plus.test/login    (Breeze login — sbcadmin@impact.test //Chris##101)
+#                                                          officer1@impact.test   //Officer##101   — FollowUpOfficer
+#                                                          followUpAdmin@impact.test //Admin##101  — Follow_UP_Admin
 ```
 
-If `verify_phase02_run.php` doesn't pass 40/40, **do not proceed** — fix the regression first. See § 8.
+If any verifier doesn't pass, **do not proceed** — fix the regression first. See § 8.
 
 ---
 
@@ -195,6 +203,24 @@ impact_portal_plus/
 | ImpactCell controller | `app/Http/Controllers/ImpactCellController.php` | `index`/`show`/`store`/`update`/`destroy`. `destroy()` uses `abort(409)` (not try/catch QueryException — a blanket catch would mask future FK violations from `ImpactSubmissions.impact_cell_id` once Phase 04+ ships). |
 | ImpactCell routes | `routes/web.php` | 5 routes under `auth` middleware: `GET/POST /impact-cells`, `GET/PUT/DELETE /impact-cells/{id}`. Admin-only check deferred to `ImpactCellPolicy` (Phase 03 follow-up). |
 | Inertia stub pages | `resources/js/Pages/ImpactCells/{Index,Show}.tsx` | Phase 03 stubs render totals + cell details. Phase 04 will flesh out the full admin tree view. |
+| **Phase 04 — Guest CRUD + column policy** | | |
+| `guests` table | `database/migrations/2026_07_27_130000_create_guests_table.php` | UUID PK, every column from `Implementation/02_Database_Schema.md`, `softDeletes()`, `nearest_impact_cell_id` FK nullable `restrictOnDelete`, `follow_officer_id` FK nullable `restrictOnDelete` (`foreignId` = `unsignedBigInteger` for compatibility with `users.id`), `follow_up_contacts` JSON (max 3 sections), 7 indexes including composite `[follow_officer_id, deleted_at]`. |
+| Guest model | `app/Models/Guest.php` | UUID PK via `HasUuids` + `SoftDeletes` traits, `nearestImpactCell(): BelongsTo ImpactCell`, `followOfficer(): BelongsTo User`, scopes `scopeAssignedTo($userId)` + `scopeForImpactCell($cellId)`. |
+| Guest form request | `app/Http/Requests/GuestRequest.php` | `prepareForValidation()` calls `RoleHelper::stripDisallowed($this->user()?->activeRole(), $this->all())` + `$this->replace(...)`. **Single source of truth**: column-write decisions live in `RoleHelper::GROUP_GUEST_OWNER`. |
+| Guest resource | `app/Http/Resources/GuestResource.php` | `deleted_at` + `updated_at` + `created_at` are null for non-admin (per spec "Hidden from non-admins: ... raw timestamps"). All other fields returned as-is. |
+| Guest policy | `app/Policies/GuestPolicy.php` | `view` / `create` / `update` / `delete` by role + group. **Officer**: their `follow_officer_id` matched. **ImpactCell**: their `impact_cell_id` matched (column will be added in Phase 07 — silent fallback today). **followUpTeam**: read-only. Admin: full. |
+| Guest controller | `app/Http/Controllers/GuestController.php` | `index`/`show`/`store`/`update`/`destroy` returning `Inertia::render('Guests/{Index,Show}', ...)`. **Cross-cutting rule**: if `contacted_status != AvailableForVisit`, `visitation_status` + `feedback` are nulled server-side (business rule). Self-assign on `store()` for non-admin. |
+| ImpactCell policy | `app/Policies/ImpactCellPolicy.php` | Phase 03 follow-up: only Administrator can `update`. (Read-only for everyone else.) |
+| Inertia stub pages | `resources/js/Pages/Guests/{Index,Show}.tsx` | Phase 04 stubs render the role-aware column set. Phase 05+ will flesh out the per-group dashboards + inline editing. |
+| **Phase 04b — Local infrastructure (Laragon bridge)** | | |
+| Parent `.htaccess` | `C:\laragon\www\impact_portal_plus\.htaccess` | **Purpose**: Laragon auto-vhost (`DocumentRoot=project parent`) cannot reach Laravel's `public/` entry. This file bridges parent → `public/` so the auth pages load. **Security**: the rewrite is **unconditional** for non-`/public/` paths — `GET /composer.json`, `/HANDOFF.md`, `/app/*`, `/routes/*`, etc. all forward to `public/index.php` → Laravel router → 404. Belt-and-suspenders `RedirectMatch 404 /\.(?!well-known/)` short-circuits dot-files (`/.env`, `/.git/HEAD`) at the URI translation phase so they never reach the rewrite chain. `Options -Indexes` prevents directory listings. **Production**: in production the vhost's `DocumentRoot` is properly set to `public/`, so this file lives outside the served tree and is never read by Apache — no behavior change, zero risk. |
+| **Phase 05 — Follow Up Officer dashboard + reassign permission** | | |
+| Officer dashboard controller | `app/Http/Controllers/DashboardController.php` | `index()` computes 5 KPIs (`pendingContacts`, `totalCalls`, `visited`, `pendingVisit`, `responseRate`) + top-8 queue when the active role is in `GROUP_FOLLOW_UP_OFFICER`; falls through to the admin welcome otherwise. Inertia page = `Dashboard` with the matching props. Wired in `routes/web.php` (was an inline closure before). |
+| RoleHelper reassign exception | `app/Support/RoleHelper.php` | `canEditField()` now special-cases the `follow_officer_id` column: only `Administrator` + `Follow_UP_Admin` may reassign (per `Implementation/03` matrix table). The matrix for the Follow Up Officer group stays unchanged; self-assign in `GuestController::store` overrides any client-provided value for non-admin. Documented in the file docblock. |
+| `FollowUpOfficerSeeder` | `database/seeders/FollowUpOfficerSeeder.php` | Seeds two test users so the verifier + manual QA have a reliable state: `officer1@impact.test` (`//Officer##101`, `FollowUpOfficer`, with 5 assigned guests spanning each `contacted_status`) + `followUpAdmin@impact.test` (`//Admin##101`, `Follow_UP_Admin`). Idempotent via `firstOrCreate`. Wired into `DatabaseSeeder`. |
+| Reusable components | `resources/js/Components/{KPICard,StatusPill}.tsx` | `KPICard`: 12px radius, caption + big number + trend slot, dark-mode-aware surface + inner ring. `StatusPill`: 11px font with role/group color hints (Pending = neutral, Visited = green, Issue = red). |
+| Role-aware top-bar nav | `resources/js/Layouts/AuthenticatedLayout.tsx` | Three nav states: **Admin**: Dashboard, Guests, Impact Cells, Profile. **Follow Up Officer / Team / Impact Leader**: Dashboard, My Guests, Profile (admin links hidden when active role is non-admin). Selection driven by `auth.user.activeGroup` from `HandleInertiaRequests` shared props — single source of truth. |
+| Officer variant page | `resources/js/Pages/Dashboard.tsx` | Branches on `auth.user.activeGroup`: officer → 5 KPI cards + top-8 queue (sorted NOT CONTACTED first) + role-aware empty state. Otherwise → admin welcome. |
 
 ---
 
@@ -207,6 +233,12 @@ php scripts/verify_phase02_run.php
 # Phase 03 — 14-assertion regression net — asserts hierarchy + split + idempotency
 php scripts/verify_phase03_run.php
 
+# Phase 04 — 28-assertion regression net — guests FK + prepareForValidation stripping + Resource masking + Policy
+php scripts/verify_phase04_run.php
+
+# Phase 05 — 18-assertion regression net — officer KPIs + reassign permission + nav scoping
+php scripts/verify_phase05_run.php
+
 # Probe — confirms the 'hashed' cast fires for the seeded admin password
 php scripts/probe_password_hash.php
 ```
@@ -214,6 +246,10 @@ php scripts/probe_password_hash.php
 **Phase 02 verifier asserts**: 9 roles seeded (with exact names), admin user has Administrator + active_role, `RoleHelper::groupOf` 11-case matrix, `canEditField` 11-case policy, `stripDisallowed` 4-case (Admin pass-through / Officer strip / null + unknown-role defensive), `/auth/switch-role` route registered, `allGroupOwnedFields` ≥ 10 field names.
 
 **Phase 03 verifier asserts**: 69 rows seeded, 65 primary + 4 sub-cells, hierarchy invariant (every non-primary has `parent_cell_id`; no primary has a parent), the APO primary has exactly the 4 expected sub-cells, `subCells()->exists()` is true for APO (controller would 409) and false for a leaf primary, seeder idempotency (count + split re-applied on re-run).
+
+**Phase 04 verifier asserts**: guests table + every required column exists, both FKs use `restrictOnDelete`, `GuestRequest::prepareForValidation` strips per-group (FollowUpOfficer → keeps officer cols / drops impact_status + follow_up_status + admin-only; Follow_UP → keeps team cols / drops phone + impact_status; Impact_Leaders → keeps impact_cell cols / drops phone + follow_up_status; Administrator → pass-through), cross-cutting rule zeroes `visitation_status` + `feedback` when `contacted_status != AvailableForVisit`, `GuestResource` masks `created_at` / `updated_at` / `deleted_at` for non-admin + exposes them for admin, `GuestPolicy::delete` denies non-admin, `GuestPolicy::view` allows admin + assigned officer / denies unassigned officer, `ImpactCellPolicy::update` allows only Administrator, all 5 guest routes + 5 impact-cell routes registered.
+
+**Phase 05 verifier asserts**: 2 officer test users seeded with the right roles + active_role, officer1 has 5 assigned guests across all 5 `contacted_status` permutations, none have `deleted_at`, `RoleHelper::canEditField` Special-Case holds (Administrator = true, Follow_UP_Admin = true, plain FollowUpOfficer = false, Impact / Team groups = false, Supervisor / null / unknown = false), `DashboardController` route registered, KPI math is exact (Pending Contacts + Total Calls + Visited + Pending Visit + Response Rate all match the seeded counts), officer queue size exactly 8 (LIMIT 8) + sorted with NOT CONTACTED first, role-aware top-bar nav exposes `My Guests` link for officer role only (admin / supervisor / no role = no officer nav), no `.env` / `public/hot` / `vendor` / `node_modules` in any verifier intermediate state.
 
 **Run this after every Phase 02 edit** (and after migrations / seeders change). It is the regression net for everything Phase 02 touches.
 
@@ -225,19 +261,16 @@ The script reads `sbcadmin@impact.test`'s stored password, asserts it's a real `
 
 ---
 
-## 8. What's next — Phase 04 (Guest CRUD + column policy)
+## 8. What's next — Phase 06 (Follow Up Team group)
 
-Outlined in `Implementation/Phase_04_Guest_Records_Core.md` + bridge doc § 5 (Guest schema) + bridge doc § 6 (Form Request `prepareForValidation()` pattern).
+Outlined in `Implementation/Phase_06_Follow_Up_Team.md`. The Team group's dashboard widens the per-officer view into a multi-officer queue with `FollowUpStatus` inline edits and the 3-section `ContactSections` builder (`follow_up_contacts[]` capped at 3 per spec).
 
-Concrete Phase 04 deliverables:
-1. Migration: `guests` table — UUID PK, columns from `Implementation/02_Database_Schema.md`, `softDeletes()`, indexes per the spec. Add `nearest_impact_cell_id` FK (nullable, `restrictOnDelete`) once Phase 03 ships — schema mapping per bridge §5.
-2. Model: `app/Models/Guest.php` — UUID PK via `HasUuids`, `use SoftDeletes`, `nearestImpactCell(): BelongsTo ImpactCell`, `submissions(): HasMany ImpactSubmission` (Phase 07+).
-3. Form Request: `app/Http/Requests/GuestRequest.php` — `prepareForValidation()` calls `RoleHelper::stripDisallowed($this->user()?->activeRole(), $this->all())` + `$this->replace($merged)` so banned keys never reach the validator. Single source of truth per bridge §6.
-4. API Resource: `app/Http/Resources/GuestResource.php` — masks hidden columns per group (e.g., impactCell group hides `followUpStatus`).
-5. Policy: `app/Policies/GuestPolicy.php` — row-level authorization (Administrator always; otherwise the user must be assigned the guest).
-6. Controller: `app/Http/Controllers/GuestController.php` — `index`/`show`/`store`/`update`/`destroy` returning `Inertia::render('Guests/Index', [...])` for the index.
-7. **Phase 04 must also add `ImpactCellPolicy`** (Phase 03 follow-up per the inline TODO in `ImpactCellController`) — only Administrators can edit cells.
-8. Extend `scripts/verify_phase04_run.php` with assertions: form-request `prepareForValidation` strips disallowed fields (e.g., FollowUpOfficer posting `impactStatus` + `followUpStatus` gets them removed before validation), API Resource hides columns per group.
+Concrete Phase 06 deliverables (planned):
+1. **Team dashboard variant** in `Pages/Dashboard.tsx` (or `Pages/Dashboard/Team.tsx`) — new KPIs: Team-wide Pending Contacts / Wrong Number / Not Reachable / Contacted Today.
+2. **Inline status dropdown** on `/guests` for `Follow_UP` + `Follow_UP_Admin` — saves via `router.put` on the existing `GuestController::update` (sanitizer already strips non-team fields per Phase 04).
+3. **`<ContactsTimeline>` component** visualizing `follow_up_contacts[]` (max 3 sections per matrix).
+4. **`Follow_UP_View_Only` banner** + disabled controls.
+5. **Seeding**: 1 `Follow_UP` test user + 3 guests with `follow_up_contacts[3]` populated; **6 verifier assertions** (team role nav + Read-only banner + ContactsTimeline mounts + sanitiser drops phone when team posts it).
 
 ---
 

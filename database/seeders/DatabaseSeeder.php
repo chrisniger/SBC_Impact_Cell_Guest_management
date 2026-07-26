@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             RolesAndPermissionsSeeder::class,
             AdminUserSeeder::class,
             ImpactCellSeeder::class,
+            FollowUpOfficerSeeder::class,
         ]);
     }
 }

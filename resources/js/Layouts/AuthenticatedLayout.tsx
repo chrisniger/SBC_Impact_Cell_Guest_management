@@ -23,11 +23,50 @@ type AuthPageProps = Record<string, any> & {
             name: string;
             email: string;
             activeRole: string | null;
+            activeGroup: string | null;
             roles: string[];
             hasMultipleRoles: boolean;
         };
     };
 };
+
+// Phase 05 — role-aware nav. The active role's 3-group key drives this.
+//
+//   Administrator            → full admin nav (Dashboard, Guests, Impact Cells, Profile)
+//   Supervisor               → Dashboard, Guests (read-only), Profile
+//   followUpOfficer group    → Dashboard, My Guests, Profile
+//   followUpTeam group       → Dashboard, My Guests, Profile  (Team Queue hides via /guests subset)
+//   impactCell group         → Dashboard, My Guests, Profile  (Cell Leader view lands in Phase 07)
+//
+// Hidden fields stay hidden — admin links are completely absent for non-admin
+// active roles (not just visually muted).
+type NavItem = { label: string; href: string; routeName: string };
+
+function navItemsFor(activeRole: string | null, activeGroup: string | null): NavItem[] {
+    if (activeRole === 'Administrator') {
+        return [
+            { label: 'Dashboard',    href: route('dashboard'),            routeName: 'dashboard' },
+            { label: 'Guests',       href: route('guests.index'),         routeName: 'guests.index' },
+            { label: 'Impact Cells', href: route('impact-cells.index'),   routeName: 'impact-cells.index' },
+        ];
+    }
+    // Officer / Team / Cell Leader — keep nav minimal + role-scoped.
+    if (
+        activeGroup === 'followUpOfficer'
+        || activeGroup === 'followUpTeam'
+        || activeGroup === 'impactCell'
+        || activeRole === 'Supervisor'
+    ) {
+        return [
+            { label: 'Dashboard',   href: route('dashboard'),    routeName: 'dashboard' },
+            { label: 'My Guests',   href: route('guests.index'), routeName: 'guests.index' },
+        ];
+    }
+    // Last-resort fallback (no role, null active role, multi-role out of scope).
+    return [
+        { label: 'Dashboard', href: route('dashboard'), routeName: 'dashboard' },
+    ];
+}
 
 export default function Authenticated({
     header,
@@ -38,6 +77,9 @@ export default function Authenticated({
 
     const [showingNavigationDropdown, setShowingNavigationDropdown] =
         useState(false);
+
+    const navItems = navItemsFor(user.activeRole, user.activeGroup);
+    const currentRoute = route().current();
 
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
@@ -52,12 +94,16 @@ export default function Authenticated({
                             </div>
 
                             <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                                <NavLink
-                                    href={route('dashboard')}
-                                    active={route().current('dashboard')}
-                                >
-                                    Dashboard
-                                </NavLink>
+                                {navItems.map((item) => (
+                                    <NavLink
+                                        key={item.routeName}
+                                        href={item.href}
+                                        active={currentRoute === item.routeName}
+                                        data-testid={`nav-${item.routeName}`}
+                                    >
+                                        {item.label}
+                                    </NavLink>
+                                ))}
                             </div>
                         </div>
 
@@ -168,12 +214,15 @@ export default function Authenticated({
                     }
                 >
                     <div className="space-y-1 pb-3 pt-2">
-                        <ResponsiveNavLink
-                            href={route('dashboard')}
-                            active={route().current('dashboard')}
-                        >
-                            Dashboard
-                        </ResponsiveNavLink>
+                        {navItems.map((item) => (
+                            <ResponsiveNavLink
+                                key={item.routeName}
+                                href={item.href}
+                                active={currentRoute === item.routeName}
+                            >
+                                {item.label}
+                            </ResponsiveNavLink>
+                        ))}
                     </div>
 
                     {/* Phase 02 — mobile menu shows role badge + (for multi-role) a role list */}

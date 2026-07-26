@@ -69,7 +69,20 @@ final class RoleHelper
     // Permission predicates
     // ─────────────────────────────────────────────────────────────────────
 
-    /** True if the role may write the given field on a Guest. Admin == always true. */
+    /**
+     * True if the role may write the given field on a Guest.
+     *
+     *  - Administrator: always true.
+     *  - Supervisor:     always false (read-only everywhere).
+     *  - Per-role special-case (Phase 05): the `follow_officer_id` column is
+     *    NOT inside any group's matrix. Per Implementation/03 § "Reassign
+     *    within the system", only `Administrator` + `Follow_UP_Admin` may
+     *    reassign. Self-assign at create is handled in
+     *    `GuestController::store` (forces `follow_officer_id = user.id`
+     *    AFTER Form Request stripping) — it's a controller-level
+     *    business rule, NOT a matrix entry.
+     *  - All other fields: per the GROUP_GUEST_OWNER matrix.
+     */
     public static function canEditField(?string $role, string $field): bool
     {
         if (! $role) {
@@ -77,6 +90,10 @@ final class RoleHelper
         }
         if ($role === 'Administrator') {
             return true;
+        }
+
+        if ($field === 'follow_officer_id') {
+            return $role === 'Follow_UP_Admin';
         }
 
         $g = self::groupOf($role);

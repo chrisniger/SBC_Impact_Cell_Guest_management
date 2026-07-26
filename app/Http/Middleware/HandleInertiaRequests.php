@@ -42,6 +42,11 @@ class HandleInertiaRequests extends Middleware
                     // These are the SINGLE SOURCE OF TRUTH — the frontend reads them
                     // via `usePage().props.auth.user.activeRole` / `roles` / `hasMultipleRoles`.
                     'activeRole'       => $user->activeRole(),
+                    // Phase 05 — group key (impactCell / followUpOfficer / followUpTeam / null).
+                    // Adds the 3-group classification to the frontend so AuthenticatedLayout
+                    // can show a role-aware nav (Officer/Team/Cell groups see My Guests only;
+                    // Administrator sees the fullset).
+                    'activeGroup'      => $user->activeGroup(),
                     'roles'            => $user->getRoleNames()->all(),
                     'hasMultipleRoles' => $user->getRoleNames()->count() > 1,
                 ],
