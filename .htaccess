@@ -1,0 +1,20 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Belt-and-suspenders: dot-files at the parent still 404 if anyone
+    # bypasses the rewrite (symlink tricks, etc.) -> keeps .env, .git, etc.
+    # from ever being servable via this bridge. .well-known/* stays accessible.
+    RedirectMatch 404 /\.(?!well-known/)
+
+    # Defense-in-depth: don't auto-index the parent even if a stray index.html
+    # ever lands at the project root.
+    Options -Indexes
+
+    # Send EVERY non-/public/ request into public/. If the rewritten URL
+    # doesn't match a real file in public/, Laravel's public/.htaccess forwards
+    # to public/index.php and the router 404s. Nothing at the project parent
+    # (composer.json, package.json, HANDOFF.md, app/*, routes/*, ...) is ever
+    # servable. /public/* itself is left alone to prevent double-rewrite.
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
