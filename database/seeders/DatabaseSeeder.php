@@ -22,6 +22,8 @@ class DatabaseSeeder extends Seeder
             AdminUserSeeder::class,
             ImpactCellSeeder::class,
             FollowUpOfficerSeeder::class,
+            FollowUpTeamSeeder::class,
+            ZonalCoordinatorSeeder::class,
         ]);
     }
 }

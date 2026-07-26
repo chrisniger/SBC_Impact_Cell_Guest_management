@@ -1,4 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import ContactsTimeline from '@/Components/ContactsTimeline';
+import ViewOnlyBanner from '@/Components/ViewOnlyBanner';
 import { Head, Link } from '@inertiajs/react';
 
 interface GuestDetail {
@@ -25,14 +27,14 @@ interface GuestDetail {
     visitation_status: string | null;
     feedback: string | null;
     follow_up_status: string | null;
-    follow_up_contacts: unknown[] | null;
+    follow_up_contacts: { date: string | null; contact: string | null; comments: string | null }[] | null;
     follow_officer_id: string | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;
 }
 
-export default function Show({ guest, editableFields }: { guest: GuestDetail; editableFields?: string[] }) {
+export default function Show({ guest, editableFields, activeRole }: { guest: GuestDetail; editableFields?: string[]; activeRole?: string | null }) {
     const canEditAnything = (editableFields ?? []).length > 0;
     const Row = ({ label, value }: { label: string; value: string | null | undefined }) => (
         <div className="flex justify-between border-b border-gray-100 py-2 text-sm dark:border-gray-700">
@@ -69,6 +71,7 @@ export default function Show({ guest, editableFields }: { guest: GuestDetail; ed
 
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
+                    <ViewOnlyBanner role={activeRole ?? null} />
                     <div className="overflow-hidden bg-white shadow-sm dark:bg-gray-800 sm:rounded-lg">
                         <div className="p-6">
                             <section className="mb-8">
@@ -121,11 +124,16 @@ export default function Show({ guest, editableFields }: { guest: GuestDetail; ed
                                 </h3>
                                 <dl>
                                     <Row label="Follow Up status" value={guest.follow_up_status} />
-                                    <Row
-                                        label="Follow Up contacts"
-                                        value={guest.follow_up_contacts ? `${guest.follow_up_contacts.length} section(s)` : null}
-                                    />
                                 </dl>
+                                <div className="mt-3">
+                                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                                        Contact Timeline
+                                    </h4>
+                                    <ContactsTimeline
+                                        contacts={guest.follow_up_contacts}
+                                        readOnly={true}
+                                    />
+                                </div>
                             </section>
 
                             <section>

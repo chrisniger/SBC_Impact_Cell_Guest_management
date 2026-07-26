@@ -45,16 +45,16 @@ class GuestPolicy
      * Viewing a single guest:
      *   - Administrator: always.
      *   - FollowUpOfficer / Follow_UP_Admin: only when assigned to them.
-     *   - Impact Cell group: only when the guest's nearest_impact_cell_id
-     *     matches the user's impact_cell_id.
-     *   - Follow Up / Follow Up View Only: only when assigned to them
-     *     (or, for the View_Only subset, never — see destroy/update).
+     *   - Impact Cell group (except Zonal Cordinator): only when the guest's
+     *     nearest_impact_cell_id matches the user's impact_cell_id.
+     *   - Impact_Zonal_Cordinator: sees all guests (zone-wide view).
+     *   - Follow Up / Follow Up View Only: all guests (team queue).
      */
     public function view(User $user, Guest $guest): bool
     {
         $role = $user->activeRole();
 
-        if ($role === 'Administrator') {
+        if ($role === 'Administrator' || $role === 'Impact_Zonal_Cordinator') {
             return true;
         }
 
@@ -63,8 +63,8 @@ class GuestPolicy
             'impactCell'      => $guest->nearest_impact_cell_id !== null
                                   && $user->impact_cell_id !== null
                                   && $guest->nearest_impact_cell_id === $user->impact_cell_id,
-            'followUpTeam'    => $guest->follow_officer_id === $user->id,
-            default           => false,   // Supervisor / unknown role
+            'followUpTeam'    => true,
+            default           => false,
         };
     }
 
@@ -89,16 +89,21 @@ class GuestPolicy
      * Updating a guest:
      *   - Administrator: always.
      *   - FollowUpOfficer / Follow_UP_Admin: only when assigned to them.
-     *   - Impact Cell group: only when the guest's nearest_impact_cell_id
-     *     matches the user's impact_cell_id (and only Impact Cell columns
-     *     can be written — but that's the Form Request's job, not the policy's).
-     *   - Follow Up / Follow Up View Only: NO.
+     *   - Impact Cell group (except Zonal Cordinator): only when the guest's
+     *     nearest_impact_cell_id matches the user's impact_cell_id.
+     *   - Impact_Zonal_Cordinator: can update all guests (zone-wide).
+     *   - Follow_UP: updates all guests (column-level restriction via Form Request).
+     *   - Follow_UP_View_Only: NO (read-only).
      */
     public function update(User $user, Guest $guest): bool
     {
         $role = $user->activeRole();
 
-        if ($role === 'Administrator') {
+        if ($role === 'Administrator' || $role === 'Impact_Zonal_Cordinator') {
+            return true;
+        }
+
+        if ($role === 'Follow_UP') {
             return true;
         }
 
@@ -107,7 +112,7 @@ class GuestPolicy
             'impactCell'      => $guest->nearest_impact_cell_id !== null
                                   && $user->impact_cell_id !== null
                                   && $guest->nearest_impact_cell_id === $user->impact_cell_id,
-            default           => false,   // followUpTeam + Supervisor + unknown role
+            default           => false,
         };
     }
 

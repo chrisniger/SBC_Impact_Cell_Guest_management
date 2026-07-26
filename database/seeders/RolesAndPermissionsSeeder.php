@@ -27,6 +27,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'Impact_Leaders',
         'Impact_Cell_Admin',
         'Impact_Cell_Report',
+        'Impact_Zonal_Cordinator',
     ];
 
     public function run(): void

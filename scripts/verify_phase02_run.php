@@ -33,7 +33,7 @@ echo "=== Phase 02 verification ===\n\n";
 // 1. Role count + names
 echo "[1] roles seeded\n";
 $count = Role::count();
-check("9 roles exist", $count === 9, "got {$count}");
+    check("10 roles exist", $count === 10, "got {$count}");
 
 // Regression guard (1b): every key in GROUP_GUEST_OWNER must be snake_case.
 // Prevents recurrence of the post-Phase-05 silent-data-loss bug (matrix was
@@ -49,6 +49,7 @@ $expectedNames = [
     'Administrator', 'FollowUpOfficer', 'Follow_UP',
     'Follow_UP_Admin', 'Follow_UP_View_Only',
     'Impact_Cell_Admin', 'Impact_Cell_Report', 'Impact_Leaders',
+    'Impact_Zonal_Cordinator',
     'Supervisor',
 ];
 $actualNames = Role::pluck('name')->sort()->values()->toArray();

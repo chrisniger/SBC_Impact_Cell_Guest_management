@@ -45,21 +45,45 @@ type NavItem = { label: string; href: string; routeName: string };
 function navItemsFor(activeRole: string | null, activeGroup: string | null): NavItem[] {
     if (activeRole === 'Administrator') {
         return [
-            { label: 'Dashboard',    href: route('dashboard'),            routeName: 'dashboard' },
-            { label: 'Guests',       href: route('guests.index'),         routeName: 'guests.index' },
-            { label: 'Impact Cells', href: route('impact-cells.index'),   routeName: 'impact-cells.index' },
+            { label: 'Dashboard',              href: route('dashboard'),                       routeName: 'dashboard' },
+            { label: 'Guests',                 href: route('guests.index'),                    routeName: 'guests.index' },
+            { label: 'Impact Cells',           href: route('impact-cells.index'),              routeName: 'impact-cells.index' },
+            { label: 'Reports',                href: route('reports.index'),                   routeName: 'reports.index' },
+            { label: 'CSV Import',             href: route('csv.import'),                      routeName: 'csv.import' },
+            { label: 'Notifications',          href: route('notification-settings.index'),     routeName: 'notification-settings.index' },
+            { label: 'Audit Log',              href: route('audit.index'),                     routeName: 'audit.index' },
         ];
     }
     // Officer / Team / Cell Leader — keep nav minimal + role-scoped.
-    if (
-        activeGroup === 'followUpOfficer'
-        || activeGroup === 'followUpTeam'
-        || activeGroup === 'impactCell'
-        || activeRole === 'Supervisor'
-    ) {
+    if (activeRole === 'Impact_Zonal_Cordinator') {
+        return [
+            { label: 'Dashboard',              href: route('dashboard'),                       routeName: 'dashboard' },
+            { label: 'Impact Cells',           href: route('impact-cells.index'),              routeName: 'impact-cells.index' },
+            { label: 'Guests',                 href: route('guests.index'),                    routeName: 'guests.index' },
+            { label: 'Reports',                href: route('reports.index'),                   routeName: 'reports.index' },
+            { label: 'Export CSV',             href: route('csv.export'),                      routeName: 'csv.export' },
+        ];
+    }
+
+    if (activeRole === 'Supervisor') {
+        return [
+            { label: 'Dashboard',   href: route('dashboard'),    routeName: 'dashboard' },
+            { label: 'Guests',      href: route('guests.index'), routeName: 'guests.index' },
+            { label: 'Reports',     href: route('reports.index'), routeName: 'reports.index' },
+        ];
+    }
+    if (activeGroup === 'followUpOfficer' || activeGroup === 'followUpTeam') {
         return [
             { label: 'Dashboard',   href: route('dashboard'),    routeName: 'dashboard' },
             { label: 'My Guests',   href: route('guests.index'), routeName: 'guests.index' },
+            { label: 'Export CSV',  href: route('csv.export'),   routeName: 'csv.export' },
+        ];
+    }
+    if (activeGroup === 'impactCell') {
+        return [
+            { label: 'Dashboard',   href: route('dashboard'),                        routeName: 'dashboard' },
+            { label: 'My Reports',  href: route('impact-submissions.my-reports'),    routeName: 'impact-submissions.my-reports' },
+            { label: 'Soul Search', href: route('impact-submissions.soul-search'),   routeName: 'impact-submissions.soul-search' },
         ];
     }
     // Last-resort fallback (no role, null active role, multi-role out of scope).

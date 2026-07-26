@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import ContactsTimeline from '@/Components/ContactsTimeline';
 import { Head, Link, useForm } from '@inertiajs/react';
 import React, { FormEventHandler } from 'react';
 
@@ -359,19 +360,39 @@ export default function Edit({ guest, editableFields, impactCells, activeRole }:
                             )}
 
                             {/* ── FOLLOW UP TEAM GROUP ─────────────────────────────────── */}
-                            {canEdit('follow_up_status') && (
+                            {(canEdit('follow_up_status') || canEdit('follow_up_contacts')) && (
                                 <fieldset className="border-t border-gray-200 pt-6 dark:border-gray-700">
                                     <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-500">
                                         Follow-up team group
                                     </legend>
                                     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                        <div>
-                                            <label htmlFor="follow_up_status" className={labelCls}>Follow-up status</label>
-                                            <input id="follow_up_status" type="text" value={data.follow_up_status ?? ''}
-                                                onChange={(e) => setData('follow_up_status', e.target.value)} className={inputCls} />
-                                            {fieldErr('follow_up_status')}
-                                        </div>
+                                        {canEdit('follow_up_status') && (
+                                            <div>
+                                                <label htmlFor="follow_up_status" className={labelCls}>Follow-up status</label>
+                                                <select id="follow_up_status" value={data.follow_up_status ?? ''}
+                                                    onChange={(e) => setData('follow_up_status', e.target.value || null)} className={inputCls}>
+                                                    <option value="">— (unset) —</option>
+                                                    <option value="NOT CONTACTED">Not Contacted</option>
+                                                    <option value="CONTACTED">Contacted</option>
+                                                    <option value="WRONG NUMBER">Wrong Number</option>
+                                                    <option value="NOT REACHABLE">Not Reachable</option>
+                                                </select>
+                                                {fieldErr('follow_up_status')}
+                                            </div>
+                                        )}
                                     </div>
+                                    {canEdit('follow_up_contacts') && (
+                                        <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-700">
+                                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                                Contact Sections
+                                            </h4>
+                                            <ContactsTimeline
+                                                contacts={data.follow_up_contacts ?? []}
+                                                editable={true}
+                                                onChange={(updated) => setData('follow_up_contacts', updated)}
+                                            />
+                                        </div>
+                                    )}
                                 </fieldset>
                             )}
 

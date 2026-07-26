@@ -53,6 +53,39 @@ Route::middleware('auth')->group(function () {
     Route::get   ('/guests/{id}',             [\App\Http\Controllers\GuestController::class, 'show'])->name('guests.show');
     Route::put   ('/guests/{id}',             [\App\Http\Controllers\GuestController::class, 'update'])->name('guests.update');
     Route::delete('/guests/{id}',             [\App\Http\Controllers\GuestController::class, 'destroy'])->name('guests.destroy');
+
+    // Phase 06 — inline follow_up_status quick-update for the team dashboard queue.
+    // Returns JSON instead of a redirect so the frontend can apply the change
+    // without a full Inertia page reload.
+    Route::patch('/guests/{id}/follow-up-status', [\App\Http\Controllers\GuestController::class, 'updateFollowUpStatus'])->name('guests.follow-up-status');
+
+    // Phase 08 — Leadership Board (JSON endpoint for primary cell health).
+    Route::get('/leadership-board/{cellId}', [\App\Http\Controllers\LeadershipBoardController::class, 'show'])->name('leadership-board.show');
+
+    // Phase 09 — Notification settings (Admin only).
+    Route::get   ('/notification-settings',               [\App\Http\Controllers\NotificationSettingsController::class, 'index'])->name('notification-settings.index');
+    Route::post  ('/notification-settings',               [\App\Http\Controllers\NotificationSettingsController::class, 'store'])->name('notification-settings.store');
+    Route::delete('/notification-settings/{id}',          [\App\Http\Controllers\NotificationSettingsController::class, 'destroy'])->name('notification-settings.destroy');
+
+    // Phase 10 — CSV Import / Export (Admin for import, Admin+Officers for export).
+    Route::get   ('/csv/import',                          [\App\Http\Controllers\CsvImportController::class, 'index'])->name('csv.import');
+    Route::post  ('/csv/import',                          [\App\Http\Controllers\CsvImportController::class, 'import'])->name('csv.import.upload');
+    Route::get   ('/csv/export',                          [\App\Http\Controllers\CsvExportController::class, 'export'])->name('csv.export');
+
+    // Phase 11 — Reports & Audit.
+    Route::get   ('/reports',                             [\App\Http\Controllers\ReportsController::class, 'index'])->name('reports.index');
+    Route::get   ('/audit',                               [\App\Http\Controllers\AuditLogController::class, 'index'])->name('audit.index');
+
+    // Phase 07 — Impact Submissions (Members Data, Reports, Childbirth, Souls).
+    // Both the listing and the create form use GET /impact-submissions;
+    // the optional `type` query param determines which form renders on create.
+    Route::get   ('/impact-submissions',              [\App\Http\Controllers\ImpactSubmissionController::class, 'index'])->name('impact-submissions.index');
+    Route::get   ('/impact-submissions/create',       [\App\Http\Controllers\ImpactSubmissionController::class, 'create'])->name('impact-submissions.create');
+    Route::post  ('/impact-submissions',              [\App\Http\Controllers\ImpactSubmissionController::class, 'store'])->name('impact-submissions.store');
+    Route::get   ('/impact-submissions/{id}',         [\App\Http\Controllers\ImpactSubmissionController::class, 'show'])->name('impact-submissions.show');
+    Route::get   ('/impact-submissions/search/json',  [\App\Http\Controllers\ImpactSubmissionController::class, 'search'])->name('impact-submissions.search');
+    Route::get   ('/my-reports',                      [\App\Http\Controllers\ImpactSubmissionController::class, 'myReports'])->name('impact-submissions.my-reports');
+    Route::get   ('/soul-search',                     [\App\Http\Controllers\ImpactSubmissionController::class, 'soulSearch'])->name('impact-submissions.soul-search');
 });
 
 require __DIR__.'/auth.php';

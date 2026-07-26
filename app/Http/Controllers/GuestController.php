@@ -6,6 +6,7 @@ use App\Http\Requests\GuestRequest;
 use App\Http\Resources\GuestResource;
 use App\Models\Guest;
 use App\Support\RoleHelper;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -85,9 +86,12 @@ class GuestController extends Controller
 
         // Pass `editableFields` to Show.tsx so the Edit link can be gated
         // — users without update perms shouldn't see a button that 403s.
+        $role = $request->user()?->activeRole();
+
         return Inertia::render('Guests/Show', [
             'guest'          => GuestResource::make($guest)->resolve($request),
-            'editableFields' => $this->computeEditableKeysForRole($request->user()?->activeRole()),
+            'editableFields' => $this->computeEditableKeysForRole($role),
+            'activeRole'     => $role,
         ]);
     }
 
@@ -189,6 +193,31 @@ class GuestController extends Controller
         return redirect()
             ->route('guests.index')
             ->with('success', "Guest {$name} deleted.");
+    }
+
+    /**
+     * PATCH /guests/{id}/follow-up-status — Phase 06 inline update.
+     *
+     * Lightweight endpoint used by the Team Dashboard's inline status
+     * dropdown. Only updates follow_up_status — no other fields accepted.
+     * The regular PUT /guests/{id} route (GuestController::update) is
+     * used for full-edit form submissions.
+     */
+    public function updateFollowUpStatus(Request $request, string $id): JsonResponse
+    {
+        $guest = Guest::findOrFail($id);
+        $this->authorize('update', $guest);
+
+        $validated = $request->validate([
+            'follow_up_status' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $guest->update(['follow_up_status' => $validated['follow_up_status'] ?? null]);
+
+        return response()->json([
+            'success'          => true,
+            'follow_up_status' => $guest->fresh()->follow_up_status,
+        ]);
     }
 
     /**

@@ -19,7 +19,7 @@ final class RoleHelper
     // ─────────────────────────────────────────────────────────────────────
     // 3 user groups — derived from Implementation/03_Three_User_Groups.md
     // ─────────────────────────────────────────────────────────────────────
-    public const GROUP_IMPACT_CELL       = ['Impact_Leaders', 'Impact_Cell_Admin', 'Impact_Cell_Report'];
+    public const GROUP_IMPACT_CELL       = ['Impact_Leaders', 'Impact_Cell_Admin', 'Impact_Cell_Report', 'Impact_Zonal_Cordinator'];
     public const GROUP_FOLLOW_UP_OFFICER = ['FollowUpOfficer', 'Follow_UP_Admin'];
     public const GROUP_FOLLOW_UP_TEAM    = ['Follow_UP', 'Follow_UP_View_Only'];
 
@@ -105,7 +105,7 @@ final class RoleHelper
         }
 
         if ($field === 'follow_officer_id') {
-            return $role === 'Follow_UP_Admin';
+            return $role === 'Follow_UP_Admin' || $role === 'Impact_Zonal_Cordinator';
         }
 
         $g = self::groupOf($role);
