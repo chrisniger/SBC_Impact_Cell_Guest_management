@@ -18,7 +18,11 @@ type Props = {
  *
  * Used wherever a list/page has no data. Replaces ad-hoc inline divs.
  * Style matches the polished card surface (rounded-xl + soft shadow +
- * dashed border + subtle scale-in animation).
+ * dashed border + motion-safe fade-in).
+ *
+ * Phase 06b: hardcoded shadow + animation utility now use named
+ * tokens from tailwind.config.js (shadow-card, animate-fade-in) per
+ * Implementation/Phase_06b-06c_UI_Polish.md §2.2 + §2.4.
  */
 export default function EmptyState({
     title,
@@ -30,7 +34,7 @@ export default function EmptyState({
     return (
         <div
             data-testid="empty-state"
-            className={`motion-safe:animate-[fadeIn_0.4s_ease-out] rounded-xl border border-dashed border-gray-300 bg-white px-6 py-14 text-center shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-600 dark:bg-gray-800 ${className}`}
+            className={`motion-safe:animate-fade-in rounded-xl border border-dashed border-gray-300 bg-white px-6 py-14 text-center shadow-card dark:border-gray-600 dark:bg-gray-800 ${className}`}
         >
             {iconPath && (
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-300">

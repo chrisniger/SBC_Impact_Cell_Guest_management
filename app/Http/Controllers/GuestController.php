@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\GuestRequest;
 use App\Http\Resources\GuestResource;
 use App\Models\Guest;
+use App\Models\NotificationSetting;
 use App\Support\RoleHelper;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -155,6 +158,10 @@ class GuestController extends Controller
 
         $guest = Guest::create($data);
 
+        // Phase 09b — fire GUEST_ASSIGNED_TO_IMPACT_LEADER notification on initial assignment.
+        // Mirrors Phase 09's notifyReportSubmitted per-rule + try/catch + log shape.
+        $this->sendGuestAssignedNotification($guest);
+
         // TODO(Phase 11): activity()->causedBy($user)->performedOn($guest)->log('GUEST_CREATED');
 
         return redirect()
@@ -170,9 +177,19 @@ class GuestController extends Controller
         $guest = Guest::findOrFail($id);
         $this->authorize('update', $guest);
 
+        // Capture the prior impact-cell assignment BEFORE write so we can detect post-write change.
+        // Phase 09b: GUEST_ASSIGNED notification fires only when assignment actually changed (not on every update).
+        $beforeCellId = $guest->nearest_impact_cell_id;
+
         $data = $this->applyCrossCuttingRules($request->validated());
 
         $guest->update($data);
+
+        // Phase 09b — fire GUEST_ASSIGNED_TO_IMPACT_LEADER helper ONLY when nearest_impact_cell_id
+        // changed (assigned to a new cell, or unassigned-to-assigned, or vice versa).
+        if (($beforeCellId ?? '') !== ($guest->nearest_impact_cell_id ?? '')) {
+            $this->sendGuestAssignedNotification($guest);
+        }
 
         // TODO(Phase 11): activity()->causedBy($request->user())->performedOn($guest)->withProperties(['before' => $before, 'after' => $after])->log('GUEST_UPDATED');
 
@@ -221,6 +238,67 @@ class GuestController extends Controller
     }
 
     /**
+     * PATCH /guests/{id}/impact-status — Phase 07 inline update.
+     *
+     * Mirrors updateFollowUpStatus() but for impact_status (Impact Cell
+     * group's editable column per RoleHelper::GROUP_GUEST_OWNER).
+     * GuestPolicy::update() gates per-row — impactCell user can update
+     * only when $guest->nearest_impact_cell_id === $user->impact_cell_id.
+     *
+     * **Column-level guard**: GuestPolicy does NOT gate by column group,
+     * so without the explicit check below, a FollowUpOfficer assigned to
+     * the guest could PATCH its impact_status through this endpoint
+     * (impact_status is reserved for impactCell group per the matrix).
+     * The dedicated endpoint keeps the Inertia-side pill component
+     * (InlineImpactStatusPill) lightweight — no full-page reload.
+     *
+     * **Empty-string → null normalization**: PHP's `??` only collapses
+     * `null`, not `''`. If the frontend Clear-status path sends an empty
+     * string instead of null, the DB row gets `''` instead of NULL
+     * (and downstream `Guest::whereNull('impact_status')` queries miss
+     * it). The lint coerces `''` to null so the column stays a true
+     * three-state value.
+     */
+    public function updateImpactStatus(Request $request, string $id): JsonResponse
+    {
+        // Column-level role gate FIRST (fail-fast + defense-in-depth: attacker
+        // can't probe the policy class with unauthorized requests).
+        //
+        // Permission chain:
+        //   1. Role gate  — must be Administrator OR a role whose
+        //                   `groupOf($role) === 'impactCell'`
+        //                   (see RoleHelper::GROUP_IMPACT_CELL for the
+        //                   current member list).
+        //   2. Row gate   — GuestPolicy::update (impactCell user can only
+        //                   write guests whose nearest_impact_cell_id
+        //                   matches their impact_cell_id).
+        $role = $request->user()?->activeRole();
+        $group = RoleHelper::groupOf($role);
+        if ($role !== 'Administrator' && $group !== RoleHelper::GROUP_KEY_IMPACT_CELL) {
+            abort(403, 'Only Impact Cell leaders (and Administrators) can edit impact_status.');
+        }
+
+        $guest = Guest::findOrFail($id);
+        $this->authorize('update', $guest);
+
+        $validated = $request->validate([
+            'impact_status' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $value = $validated['impact_status'];
+        if ($value === '') {
+            $value = null;
+        }
+
+        $guest->update(['impact_status' => $value]);
+
+        return response()->json([
+            'success'       => true,
+            'impact_status' => $guest->fresh()->impact_status,
+        ]);
+    }
+
+    /**
      * Compute the universe of Guest columns this role may write.
      *
      * Single source of truth shared by `show()` (to gate the Edit link)
@@ -245,6 +323,43 @@ class GuestController extends Controller
         return array_keys(
             RoleHelper::stripDisallowed($role, array_fill_keys($allPossible, true))
         );
+    }
+
+    /**
+     * Phase 09b — fire GUEST_ASSIGNED notification to all enabled rules.
+     * Mirrors Phase 09's notifyReportSubmitted try/catch + per-rule recipient pattern.
+     *
+     * For each `NotificationSetting.action = 'GUEST_ASSIGNED'` and `enabled = true`:
+     *   - Build email body reporting the assignment (incl. cell id, guest name + phone).
+     *   - Send via `Mail::raw()` wrapped in try/catch (per-recipient isolation — a failure
+     *     on one recipient never aborts the loop).
+     *   - On failure, `Log::warning()` with the recipient's address + the exception message.
+     *
+     * Skips silently with `Log::info()` when no rules are configured.
+     */
+    private function sendGuestAssignedNotification(Guest $guest): void
+    {
+        $rules = NotificationSetting::where('action', 'GUEST_ASSIGNED')
+            ->where('enabled', true)
+            ->get();
+
+        if ($rules->isEmpty()) {
+            Log::info('GUEST_ASSIGNED notification skipped: no rules configured.');
+            return;
+        }
+
+        $subject = "Guest Assigned: {$guest->guest_name}";
+        $body    = "Guest {$guest->guest_name} (phone: {$guest->phone}) has been assigned to impact cell " . ($guest->nearest_impact_cell_id ?? '(unassigned)') . '.';
+
+        foreach ($rules as $rule) {
+            try {
+                Mail::raw($body, function ($message) use ($rule, $subject) {
+                    $message->to($rule->recipient_email)->subject($subject);
+                });
+            } catch (\Exception $e) {
+                Log::warning("Failed to send GUEST_ASSIGNED email to {$rule->recipient_email}: " . $e->getMessage());
+            }
+        }
     }
 
     /**

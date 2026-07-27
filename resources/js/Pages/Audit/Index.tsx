@@ -29,14 +29,14 @@ export default function AuditIndex({ entries }: { entries: Entry[] }) {
                     Audit Log
                 </h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    {entries.length} entr{entries.length === 1 ? 'y' : 'ies'} on file · most recent activity first
+                    {entries.length} entr{entries.length === 1 ? 'y' : 'ies'} on file | most recent activity first
                 </p>
             </div>
         }>
             <Head title="Audit Log" />
 
             <div className="space-y-6">
-                <section className="motion-safe:animate-[fadeIn_0.4s_ease-out] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800" data-testid="card-audit">
+                <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800" data-testid="card-audit">
                     <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
                         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
@@ -93,10 +93,10 @@ export default function AuditIndex({ entries }: { entries: Entry[] }) {
                 </section>
 
                 {selected && (
-                    <section className="motion-safe:animate-[fadeIn_0.4s_ease-out] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800" data-testid="card-audit-details">
+                    <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800" data-testid="card-audit-details">
                         <header className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
                             <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">
-                                Entry #{selected.id} · {selected.description}
+                                Entry #{selected.id} | {selected.description}
                             </h3>
                             <button
                                 type="button"
@@ -106,12 +106,77 @@ export default function AuditIndex({ entries }: { entries: Entry[] }) {
                                 Close
                             </button>
                         </header>
-                        <pre className="overflow-x-auto p-5 text-xs leading-relaxed text-gray-700 dark:text-gray-300">
-                            {JSON.stringify(selected.properties, null, 2)}
-                        </pre>
+                        <div className="p-5">
+                            <DiffViewer properties={selected.properties} />
+                        </div>
                     </section>
                 )}
             </div>
         </AuthenticatedLayout>
+    );
+}
+
+/**
+ * Phase 11b -- before/after diff viewer for Spatie Activity properties shape:
+ *   - updated event: {old: {...}, attributes: {...}} -- render side-by-side diff
+ *   - created event: {attributes: {...}} only -- render all as additions
+ *   - deleted event: {old: {...}} only -- render all as deletions
+ *   - unknown shape -- fall back to JSON.stringify(properties)
+ */
+function DiffViewer({ properties }: { properties: Record<string, any> | null }) {
+    if (!properties) {
+        return <p className="text-xs text-gray-500">(no properties recorded)</p>;
+    }
+
+    const oldValues = properties.old;
+    const newValues = properties.attributes;
+
+    // Fallback for unknown shape (e.g., custom logged properties without old/attributes).
+    if (oldValues === undefined && newValues === undefined) {
+        return (
+            <pre className="overflow-x-auto text-xs leading-relaxed text-gray-700 dark:text-gray-300">
+                {JSON.stringify(properties, null, 2)}
+            </pre>
+        );
+    }
+
+    const allKeys = new Set<string>([
+        ...Object.keys(oldValues ?? {}),
+        ...Object.keys(newValues ?? {}),
+    ]);
+
+    return (
+        <div className="space-y-3" data-testid="audit-diff-viewer">
+            {[...allKeys].map(key => {
+                const oldVal = oldValues?.[key];
+                const newVal = newValues?.[key];
+                const isCreation = oldVal === undefined;
+                const isDeletion = newVal === undefined;
+                const isUnchanged = !isCreation && !isDeletion && JSON.stringify(oldVal) === JSON.stringify(newVal);
+
+                return (
+                    <div key={key} className="border-l-2 border-gray-200 pl-3 dark:border-gray-700">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">{key}</div>
+                        {isCreation ? (
+                            <div className="mt-1 text-xs">
+                                <ins className="text-emerald-600 no-underline">{String(newVal)}</ins>
+                            </div>
+                        ) : isDeletion ? (
+                            <div className="mt-1 text-xs">
+                                <del className="text-red-600">{String(oldVal)}</del>
+                            </div>
+                        ) : isUnchanged ? (
+                            <div className="mt-1 text-xs text-gray-700 dark:text-gray-300">{String(newVal)}</div>
+                        ) : (
+                            <div className="mt-1 text-xs">
+                                <del className="text-red-600">{String(oldVal)}</del>
+                                <span className="mx-2 text-gray-400">&rarr;</span>
+                                <ins className="text-emerald-600 no-underline">{String(newVal)}</ins>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
     );
 }

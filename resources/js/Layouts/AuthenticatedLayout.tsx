@@ -53,6 +53,7 @@ function navItemsFor(activeRole: string | null, activeGroup: string | null): Nav
             { label: 'CSV Import',     href: route('csv.import'),                      routeName: 'csv.import' },
             { label: 'Notifications',  href: route('notification-settings.index'),     routeName: 'notification-settings.index' },
             { label: 'Audit Log',      href: route('audit.index'),                     routeName: 'audit.index' },
+            { label: 'Leadership Board', href: route('leadership.index'),               routeName: 'leadership.index' },
         ];
     }
     if (activeRole === 'Impact_Zonal_Cordinator') {
@@ -80,9 +81,14 @@ function navItemsFor(activeRole: string | null, activeGroup: string | null): Nav
     }
     if (activeGroup === 'impactCell') {
         return [
-            { label: 'Dashboard',   href: route('dashboard'),                        routeName: 'dashboard' },
-            { label: 'My Reports',  href: route('impact-submissions.my-reports'),    routeName: 'impact-submissions.my-reports' },
-            { label: 'Soul Search', href: route('impact-submissions.soul-search'),   routeName: 'impact-submissions.soul-search' },
+            { label: 'Dashboard',          href: route('dashboard'),                          routeName: 'dashboard' },
+        { label: 'Members Data',       href: '/impact-submissions/create?type=member',    routeName: 'impact-submissions.create' },
+        { label: 'Submit Report',      href: '/impact-submissions/create?type=report',    routeName: 'impact-submissions.create' },
+        { label: 'Childbirth Notice',  href: '/impact-submissions/create?type=childbirth', routeName: 'impact-submissions.create' },
+        { label: 'Souls Registration', href: '/impact-submissions/create?type=soul',      routeName: 'impact-submissions.create' },
+            { label: 'Soul Search',        href: route('impact-submissions.soul-search'),     routeName: 'impact-submissions.soul-search' },
+            { label: 'My Reports',         href: route('impact-submissions.my-reports'),      routeName: 'impact-submissions.my-reports' },
+            { label: 'Leadership Board',   href: route('leadership.index'),                  routeName: 'leadership.index' },
         ];
     }
     return [
@@ -116,13 +122,12 @@ export default function Authenticated({
                                 </Link>
                             </div>
 
-                            <div className="hidden space-x-2 sm:-my-px sm:ms-10 sm:flex">
-                                {navItems.map((item) => (
-                                    <NavLink
-                                        key={item.routeName}
-                                        href={item.href}
-                                        active={currentRoute === item.routeName}
-                                        data-testid={`nav-${item.routeName}`}
+                            <div className="hidden space-x-2 sm:-my-px sm:ms-10 sm:flex">                                    {navItems.map((item) => (
+                                        <NavLink
+                                            key={item.label}
+                                            href={item.href}
+                                            active={currentRoute === item.routeName}
+                                            data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                                         className="relative inline-flex items-center px-3 py-1 text-sm font-medium leading-5 text-gray-600 transition duration-150 ease-in-out hover:text-gray-900 focus:outline-none dark:text-gray-300 dark:hover:text-white"
                                     >
                                         {item.label}
@@ -151,7 +156,7 @@ export default function Authenticated({
                                         <span className="inline-flex rounded-full">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-2 rounded-full border border-gray-200/80 bg-white/80 px-2.5 py-1.5 text-sm font-medium leading-4 text-gray-700 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition duration-150 ease-in-out hover:border-gray-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-800"
+                                                className="inline-flex items-center gap-2 rounded-full border border-gray-200/80 bg-white/80 px-2.5 py-1.5 text-sm font-medium leading-4 text-gray-700 shadow-card transition duration-150 ease-in-out hover:border-gray-300 hover:shadow-card-hover focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-800"
                                             >
                                                 <RoleBadge role={user.activeRole} />
                                                 <span className="hidden truncate max-w-[10rem] sm:inline">{user.name}</span>
@@ -229,7 +234,7 @@ export default function Authenticated({
                     <div className="space-y-1 border-t border-gray-200/60 bg-white/90 px-4 pb-3 pt-2 backdrop-blur-md dark:border-gray-800/60 dark:bg-gray-900/90">
                         {navItems.map((item) => (
                             <ResponsiveNavLink
-                                key={item.routeName}
+                                key={item.label}
                                 href={item.href}
                                 active={currentRoute === item.routeName}
                             >
@@ -301,26 +306,21 @@ export default function Authenticated({
             )}
 
             {/* Main content — motion-safe fade-in, max-w-[88rem] on 2xl+ */}
-            <main className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <main className="motion-safe:animate-fade-in">
                 <div className="mx-auto max-w-[88rem] px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
                     {children}
                 </div>
             </main>
 
-            {/*
-              The `fadeIn` keyframe is referenced by every authenticated page
-              via `motion-safe:animate-[fadeIn_0.4s_ease-out]` (Dashboard, Guests/*,
-              ImpactCells/*, ImpactSubmissions/*, Reports, Audit, Notifications,
-              Profile, Csv). Authenticated pages do NOT render GuestLayout, so
-              the `@keyframes fadeIn` declaration must live here (we also keep
-              a copy in GuestLayout so the auth-flow pages still animate).
-            */}
-            <style>{`
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(6px); }
-                    to   { opacity: 1; transform: translateY(0); }
-                }
-            `}</style>
+            {/* Phase 06b — fadeIn keyframe moved to tailwind.config.js
+                (theme.extend.keyframes.fadeIn) + theme.extend.animation['fade-in'].
+                AuthenticatedLayout no longer needs an inline @keyframes copy:
+                Tailwind's JIT emits a global `@keyframes fadeIn` from the
+                keyframes token, so arbitrary-value `animate-[fadeIn_...]`
+                classes used by Pages still resolve. GuestLayout.tsx still
+                keeps its own inline @keyframes block for now — 06c will fold
+                the auth-flow pages onto `motion-safe:animate-fade-in` and
+                drop that copy too. */}
         </div>
     );
 }

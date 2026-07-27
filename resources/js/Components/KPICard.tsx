@@ -1,4 +1,6 @@
 import { PropsWithChildren, ReactNode } from 'react';
+import AnimatedCounter from '@/Components/AnimatedCounter';
+import Sparkline from '@/Components/Sparkline';
 
 type Props = PropsWithChildren<{
     /** Caption text, e.g. "PENDING CONTACTS" — already uppercased by caller */
@@ -18,6 +20,15 @@ type Props = PropsWithChildren<{
     accent?: 'default' | 'indigo' | 'emerald' | 'amber' | 'rose' | 'blue';
     /** Optional className override for the outer card */
     className?: string;
+    /**
+     * Phase 06d.0 — optional sparkline series (daily values, oldest to newest).
+     * When present and length >= 2, renders an inline SVG trend at the bottom.
+     */
+    series?: number[];
+    /** Phase 06d.0 — sparkline accent color. Defaults to accent or 'indigo'. */
+    sparkTone?: 'default' | 'indigo' | 'emerald' | 'amber' | 'rose' | 'blue';
+    /** Phase 06d.0 — render the big number with requestAnimationFrame easeOutQuad */
+    animateValue?: boolean;
 }>;
 
 /**
@@ -28,6 +39,10 @@ type Props = PropsWithChildren<{
  *  - On dark mode: 1px border at gray-700 + dark surface
  *  - Hover lift + motion-safe fade-in
  *  - Optional accent + delta (backward-compatible additions)
+ *
+ * Phase 06b: hardcoded shadow/animation utilities replaced with named
+ *   tokens from tailwind.config.js: shadow-card, shadow-card-hover,
+ *   animate-fade-in. See Implementation/Phase_06b-06c_UI_Polish.md §2.2.
  */
 const accentClasses: Record<NonNullable<Props['accent']>, string> = {
     default: 'text-gray-900 dark:text-gray-100',
@@ -46,6 +61,9 @@ export default function KPICard({
     accent = 'default',
     className = '',
     children,
+    series,
+    sparkTone,
+    animateValue = false,
 }: Props) {
     const positiveIsGood = delta?.positiveIsGood ?? true;
     const isPositive = (delta?.value ?? 0) >= 0;
@@ -55,7 +73,7 @@ export default function KPICard({
         <div
             data-card
             data-testid={`kpi-${caption.toLowerCase().replace(/\s+/g, '-')}`}
-            className={`group rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] motion-safe:animate-[fadeIn_0.4s_ease-out] dark:border-gray-700 dark:bg-gray-800 ${className}`}
+            className={`group rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover motion-safe:animate-fade-in dark:border-gray-700 dark:bg-gray-800 ${className}`}
         >
             <div className="flex items-center justify-between">
                 <div className="text-[11px] font-medium uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">
@@ -72,14 +90,26 @@ export default function KPICard({
                 )}
             </div>
             <div className={`mt-1 text-[32px] font-semibold leading-tight ${accentClasses[accent]}`}>
-                {value}
+                {animateValue && typeof value === 'number' ? (
+                    <AnimatedCounter value={value} />
+                ) : (
+                    value
+                )}
             </div>
             {trend && (
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {trend}
                 </div>
             )}
+            {/* Phase 06d.0 — inline sparkline (renders null when series has < 2 points) */}
+            {series && series.length >= 2 && (
+                <div className="mt-2 -mb-1" data-testid={`kpi-sparkline-${caption.toLowerCase().replace(/\s+/g, '-')}`}>
+                    <Sparkline series={series} tone={sparkTone ?? accent} width={140} height={28} />
+                </div>
+            )}
             {children && <div className="mt-3">{children}</div>}
         </div>
     );
 }
+
+

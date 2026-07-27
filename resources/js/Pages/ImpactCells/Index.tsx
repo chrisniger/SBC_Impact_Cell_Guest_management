@@ -53,7 +53,7 @@ export default function ImpactCellsIndex({ cells, activeRole }: { cells: ImpactC
                             <Link
                                 key={c.id}
                                 href={route('impact-cells.show', c.id)}
-                                className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500"
+                                className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white p-5 shadow-card transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-card-hover dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500"
                                 data-testid={`impact-cell-${c.id}`}
                             >
                                 <span aria-hidden className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-indigo-50/60 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-indigo-900/20" />

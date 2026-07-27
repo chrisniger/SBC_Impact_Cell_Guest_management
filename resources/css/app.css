@@ -1,3 +1,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    /* Phase 06b — design tokens (see Implementation/Phase_06b-06c_UI_Polish.md
+       §1 + §2.1). Shadow tokens in tailwind.config.js read these vars so
+       we can flip color saturation per theme without changing class names. */
+    :root {
+        --shadow-card-default:       rgba(0, 0, 0, 0.03);
+        --shadow-card-hover-default: rgba(0, 0, 0, 0.06);
+    }
+    .dark {
+        /* Dark surfaces don't absorb near-black rgba; ratchet up opacity so
+           the depth survives the polarity flip. */
+        --shadow-card-default:       rgba(0, 0, 0, 0.55);
+        --shadow-card-hover-default: rgba(0, 0, 0, 0.75);
+    }
+}

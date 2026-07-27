@@ -223,7 +223,7 @@ export default function Guest({ children }: PropsWithChildren) {
 
                     {/* Form area */}
                     <div className="flex flex-1 items-center justify-center px-6 py-10 sm:px-10 lg:py-16">
-                        <div className="w-full max-w-md animate-[fadeIn_0.4s_ease-out]">
+                        <div className="w-full max-w-md motion-safe:animate-fade-in">
                             {children}
                         </div>
                     </div>
@@ -233,17 +233,17 @@ export default function Guest({ children }: PropsWithChildren) {
                         © {year} SBC Guest Portal
                     </footer>
                 </main>
-            </div>
-
-            {/* Global keyframes for the form fade-in. Kept inline; the
-                @keyframes name is unique enough to avoid clashes with any
-                other animation declared elsewhere. */}
-            <style>{`
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(6px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-            `}</style>
+            </div>            {/* Phase 06c — `@keyframes fadeIn` was DROPPED here. The keyframe
+                + animation now live in `tailwind.config.js`
+                (`theme.extend.keyframes.fadeIn` + `animation['fade-in']`),
+                so `motion-safe:animate-fade-in` resolves globally for any
+                auth-flow Page reachable through this layout. Phase 06b had
+                kept the inline copy as a safety net for any page that still
+                used `animate-[fadeIn_0.4s_ease-out]` arbitrary values; 06c
+                refactored those pages, so the safety net is no longer
+                necessary. The `pulse_*` decorative orbs above (lines ~17–25)
+                still rely on their own inline keyframes — that's a separate
+                Pulse/Orb concern and is intentionally untouched here. */}
         </div>
     );
 }

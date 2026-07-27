@@ -75,7 +75,7 @@ export default function MyReports({ reports, activeRole }: { reports: { data: Re
                     iconPath={fileIconPath}
                 />
             ) : (
-                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800">
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800">
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" data-testid="my-reports-table">
                             <thead className="bg-gray-50/80 dark:bg-gray-900/60">

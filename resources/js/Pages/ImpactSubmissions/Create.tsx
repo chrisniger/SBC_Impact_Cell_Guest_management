@@ -65,7 +65,7 @@ export default function Create() {
                     })}
                 </nav>
 
-                <div className="motion-safe:animate-[fadeIn_0.4s_ease-out] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800">
+                <div className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800">
                     <div className="p-6">
                         {type === 'member' && <MembersDataForm cells={cells} />}
                         {type === 'report' && <SubmitReportForm cells={cells} />}

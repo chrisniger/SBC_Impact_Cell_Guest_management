@@ -20,6 +20,7 @@ const fileIconPath = (
 
 export default function CsvImport() {
     const [file, setFile] = useState<File | null>(null);
+    const [template, setTemplate] = useState<string>('');
     const [result, setResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
     const [loading, setLoading] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -30,6 +31,7 @@ export default function CsvImport() {
         setResult(null);
         const formData = new FormData();
         formData.append('csv', file);
+        if (template) formData.append('template', template);
         try {
             const res = await fetch('/csv/import', { method: 'POST', body: formData });
             const json = await res.json();
@@ -57,7 +59,7 @@ export default function CsvImport() {
             <Head title="CSV Import" />
 
             <div className="space-y-6">
-                <section className="motion-safe:animate-[fadeIn_0.4s_ease-out] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800" data-testid="card-csv-import">
+                <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800" data-testid="card-csv-import">
                     <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
                         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
@@ -107,6 +109,24 @@ export default function CsvImport() {
                             />
                         </div>
 
+                        <div className="mt-4 flex items-center gap-3">
+                            <label htmlFor="csv-template" className="text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                                Template
+                            </label>
+                            <select
+                                id="csv-template"
+                                value={template}
+                                onChange={e => setTemplate(e.target.value)}
+                                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                                data-testid="csv-template-select"
+                            >
+                                <option value="">— default (base fields only) —</option>
+                                <option value="officer">Officer (officer-group fields)</option>
+                                <option value="team">Team (team-group fields)</option>
+                                <option value="impact">Impact (impact-group fields)</option>
+                            </select>
+                        </div>
+
                         {file && (
                             <div className="mt-4 flex justify-end">
                                 <button
@@ -139,7 +159,7 @@ export default function CsvImport() {
                 </section>
 
                 {result && (
-                    <section className="motion-safe:animate-[fadeIn_0.4s_ease-out] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800" data-testid="card-csv-result">
+                    <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800" data-testid="card-csv-result">
                         <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
                             <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">

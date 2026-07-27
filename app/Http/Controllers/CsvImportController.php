@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Guest;
+use App\Support\CsvColumns;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -35,13 +36,7 @@ class CsvImportController extends Controller
         $headers = array_map('strtolower', array_map('trim', $rows[0]));
         $dataRows = array_slice($rows, 1);
 
-        $aliasMap = [
-            'phone' => ['phone', 'phone number', 'mobile', 'tel', 'telephone'],
-            'guest_name' => ['name', 'guest name', 'full name', 'guest_name', 'fullname'],
-            'email' => ['email', 'e-mail', 'email address'],
-            'event' => ['event', 'service', 'meeting'],
-            'source' => ['source', 'referral', 'how they heard'],
-        ];
+        $aliasMap = CsvColumns::aliasesForTemplate($request->string('template')->toString());
 
         $columnMap = [];
         foreach ($aliasMap as $field => $aliases) {
@@ -84,6 +79,16 @@ class CsvImportController extends Controller
             Guest::create($data);
             $created++;
         }
+
+        // Phase 10b — Spatie-Activitylog `auditBatch`-style summary of the import.
+        activity('csv-import')
+            ->causedBy($request->user())
+            ->withProperties([
+                'created'  => $created,
+                'skipped'  => $skipped,
+                'template' => $request->string('template')->toString(),
+            ])
+            ->log('GUESTS_IMPORTED');
 
         return response()->json([
             'created'    => $created,

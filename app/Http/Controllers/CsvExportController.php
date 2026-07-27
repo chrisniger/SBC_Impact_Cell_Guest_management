@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Guest;
+use App\Support\CsvColumns;
 use App\Support\RoleHelper;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -18,7 +19,7 @@ class CsvExportController extends Controller
         $canExport = $role === 'Administrator' || $group === 'followUpOfficer' || $group === 'followUpTeam';
         abort_unless($canExport, 403);
 
-        $columns = $this->columnsForRole($role);
+        $columns = CsvColumns::forRole($role);
 
         $guests = Guest::query()
             ->when($role !== 'Administrator' && $group === 'followUpOfficer', fn ($q) => $q->where('follow_officer_id', $user->id))
@@ -45,15 +46,5 @@ class CsvExportController extends Controller
         $response->headers->set('Content-Disposition', 'attachment; filename="guests.csv"');
 
         return $response;
-    }
-
-    private function columnsForRole(?string $role): array
-    {
-        if ($role === 'Administrator') {
-            return ['guest_name', 'phone', 'email', 'address', 'event', 'event_other', 'source',
-                'contacted_status', 'visited', 'follow_up_status', 'follow_up_contacts',
-                'nearest_impact_cell_id', 'follow_officer_id', 'created_at'];
-        }
-        return ['guest_name', 'phone', 'email', 'event', 'source', 'contacted_status', 'visited', 'created_at'];
     }
 }

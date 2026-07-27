@@ -87,7 +87,7 @@ function Card({
 }) {
     return (
         <section
-            className="motion-safe:animate-[fadeIn_0.4s_ease-out] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800"
+            className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800"
             data-testid={testId}
         >
             <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
@@ -363,6 +363,11 @@ export default function Edit({ guest, editableFields, impactCells, activeRole }:
                         </Card>
                     )}
 
+                    {/* Sticky save bar — Phase 06c intentionally keeps the
+                        arbitrary negative-offset shadow (`0 -4px 20px …`).
+                        The `shadow-card` token casts DOWN, which would flip
+                        the visual: this bar needs to read as floating ABOVE
+                        the scroll content, so the shadow goes UP. */}
                     <div className="flex items-center justify-end gap-3 sticky bottom-0 z-10 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] backdrop-blur-md dark:border-gray-700 dark:bg-gray-800/90">
                         <Link
                             href={route('guests.show', guest.id)}

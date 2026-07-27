@@ -59,13 +59,34 @@ Route::middleware('auth')->group(function () {
     // without a full Inertia page reload.
     Route::patch('/guests/{id}/follow-up-status', [\App\Http\Controllers\GuestController::class, 'updateFollowUpStatus'])->name('guests.follow-up-status');
 
+    // Phase 07 — inline impact_status quick-update for the leader dashboard's assigned-guests table.
+    // Mirrors Phase 06 follow-up-status: lightweight JSON endpoint, no Inertia redirect.
+    Route::patch('/guests/{id}/impact-status', [\App\Http\Controllers\GuestController::class, 'updateImpactStatus'])->name('guests.impact-status');
+
     // Phase 08 — Leadership Board (JSON endpoint for primary cell health).
     Route::get('/leadership-board/{cellId}', [\App\Http\Controllers\LeadershipBoardController::class, 'show'])->name('leadership-board.show');
+
+    // Phase 08 — Stacked multi-board Inertia page for admin / Impact_Cell_Admin / Zonal / Impact_Leaders.
+    // Pre-computes per-primary board data on the server so the page makes ZERO fetch round-trips
+    // (would otherwise be 65+ concurrent requests via LeadershipBoard.tsx for an admin — N+1 trap).
+    // Impact_Leaders data-leak fix: index() filters primaries to ones the leader has submissions under.
+    Route::get('/leadership', [\App\Http\Controllers\LeadershipBoardController::class, 'index'])->name('leadership.index');
+
+    // Phase 06d.0 — admin sidebar stub pages (wire 6 new nav entries).
+    // Real implementations land in Phase 06e+ per Implementation/Phase_06b-06c_UI_Polish.md.
+    Route::get('/admin/submissions',              fn () => Inertia::render('Admin/Submissions/Index'))->name('admin.submissions.index');
+    Route::get('/admin/users',                    fn () => Inertia::render('Admin/Users/Index'))->name('admin.users.index');
+    Route::get('/admin/roles-permissions',        fn () => Inertia::render('Admin/RolesPermissions/Index'))->name('admin.roles-permissions.index');
+    Route::get('/admin/messages',                 fn () => Inertia::render('Admin/Messages/Index'))->name('admin.messages.index');
+    Route::get('/admin/analytics',                fn () => Inertia::render('Admin/Analytics/Index'))->name('admin.analytics.index');
 
     // Phase 09 — Notification settings (Admin only).
     Route::get   ('/notification-settings',               [\App\Http\Controllers\NotificationSettingsController::class, 'index'])->name('notification-settings.index');
     Route::post  ('/notification-settings',               [\App\Http\Controllers\NotificationSettingsController::class, 'store'])->name('notification-settings.store');
     Route::delete('/notification-settings/{id}',          [\App\Http\Controllers\NotificationSettingsController::class, 'destroy'])->name('notification-settings.destroy');
+
+    // Phase 09b — admin test-email endpoint (Send test email button on Settings.tsx).
+    Route::post('/notification-settings/test-email', [\App\Http\Controllers\NotificationSettingsController::class, 'testEmail'])->name('notification-settings.test-email');
 
     // Phase 10 — CSV Import / Export (Admin for import, Admin+Officers for export).
     Route::get   ('/csv/import',                          [\App\Http\Controllers\CsvImportController::class, 'index'])->name('csv.import');
@@ -75,6 +96,9 @@ Route::middleware('auth')->group(function () {
     // Phase 11 — Reports & Audit.
     Route::get   ('/reports',                             [\App\Http\Controllers\ReportsController::class, 'index'])->name('reports.index');
     Route::get   ('/audit',                               [\App\Http\Controllers\AuditLogController::class, 'index'])->name('audit.index');
+
+    // Phase 11b — admin JSON endpoint for audit-log filtering (scriptable clients, curl, future mobile).
+    Route::get   ('/api/reports/audit',                   [\App\Http\Controllers\AuditLogController::class, 'apiIndex'])->name('api.reports.audit');
 
     // Phase 07 — Impact Submissions (Members Data, Reports, Childbirth, Souls).
     // Both the listing and the create form use GET /impact-submissions;

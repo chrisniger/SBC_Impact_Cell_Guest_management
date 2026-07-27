@@ -1,10 +1,22 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
+import Greeting from '@/Components/Greeting';
 import KPICard from '@/Components/KPICard';
 import LeadershipBoard from '@/Components/LeadershipBoard';
 import StatusPill from '@/Components/StatusPill';
 import ViewOnlyBanner from '@/Components/ViewOnlyBanner';
-import { Head, Link, router } from '@inertiajs/react';
+import FooterCard from '@/Components/FooterCard';
+import GlobalSearch, { SearchResult } from '@/Components/GlobalSearch';
+import InlineImpactStatusPill from '@/Components/InlineImpactStatusPill';
+import LanguageSwitcher from '@/Components/LanguageSwitcher';
+import RecentActivityGrid, { RecentActivityTile } from '@/Components/RecentActivityGrid';
+import RecentRegistrationsFeed, { RegistrationItem } from '@/Components/RecentRegistrationsFeed';
+import SystemOverviewPanel, { SystemOverviewStats } from '@/Components/SystemOverviewPanel';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { lazy, Suspense } from 'react';
+import DateRangeFilter from '@/Components/DateRangeFilter';
+const OverviewAnalytics = lazy(() => import('@/Components/OverviewAnalytics'));
 
 type OfficerKpis = {
     pendingContacts: number;
@@ -74,6 +86,11 @@ type ZonalKpis = {
 
 type ZonalCell = { id: string; name: string; is_primary: boolean };
 
+// Phase 06d.0 — per-KPI delta + sparkline type contracts.
+type KpiDelta = { value: number; positiveIsGood?: boolean };
+type KpiDeltas = Record<string, KpiDelta>;
+type KpiSeries = Record<string, number[]>;
+
 type DashboardPageProps = {
     variant: 'officer' | 'team' | 'impactCell' | 'zonal' | 'admin';
     kpis: OfficerKpis | TeamKpis | LeaderKpis | AdminKpis | ZonalKpis | null;
@@ -84,24 +101,102 @@ type DashboardPageProps = {
     primaryCellId?: string | null;
     activeRole: string | null;
     activeGroup: string | null;
+    /** Phase 06d.0 — per-KPI delta (current 7d vs prior 7d) — Admin variant only. */
+    kpiDeltas?: KpiDeltas;
+    /** Phase 06d.0 — per-KPI 14-day sparkline series — Admin variant only. */
+    kpiSeries?: KpiSeries;
+    /** Phase 06d.1 — 'today' | 'week' | 'month' | 'year' | 'custom' (URL-bound). */
+    rangeKey?: string;
+    rangeFrom?: string | null;
+    rangeTo?: string | null;
+    /** Phase 06d.1 — X-axis labels for the Overview Analytics chart (oldest → newest). */
+    rangeLabels?: string[];
+    /** Phase 06d.1 — per-metric cumulative counters scoped to the chosen date range. */
+    chartSeries?: Record<string, number[]>;
+    /** Phase 06d.2 — system stats payload (DB/Storage/Active Users/System Health). */
+    systemOverview?: SystemOverviewStats;
+    /** Phase 06d.2 — search index for the topbar Combobox. */
+    globalSearchIndex?: SearchResult[];
+    /** Phase 06d.2 — 6 tiles with counts + latest relative-time labels. */
+    recentActivity?: RecentActivityTile[];
+    /** Phase 06d.2 — 3 mixed-source registration cards sorted desc by createdAt. */
+    recentRegistrations?: RegistrationItem[];
+};
+
+/** Phase 06d.0 — minimal auth user shape that the dashboard reads from usePage().props.auth.user.
+ * Mirrors `HandleInertiaRequests::share()`'s auth shape; kept narrow to avoid coupling. */
+type AuthLikeProps = {
+    auth?: { user?: { id?: number; name?: string; email?: string } };
 };
 
 /**
- * Dashboard — Phase 06b polish.
+ * Dashboard — Phase 06b polish + Phase 06d.0 admin variant.
  *
- * Selects layout by `props.variant`. The variant is decided server-side
- * in `DashboardController::index()` based on `User::activeGroup()` — the
- * single source of truth.
+ * Selects both layout (admin-only sidebar) AND content variant by `props.variant`.
  *
- * All 5 variants share the same polish motif:
- *  - motion-safe:animate-fade-in per section
- *  - Section headers with Heroicons + accent rails
- *  - EmptyState component for empty paths
- *  - Refined KPI cards with accent colors
- *  - Polished tables with hover highlights
- *  - data-testid on every key element
+ * Per-role variants:
+ *  - officer / team / impactCell / zonal: AuthenticatedLayout (top nav only)
+ *  - admin: AdminDashboardLayout (LEFT sidebar + top nav + footer skeleton)
+ *
+ * Admin variant (Phase 06d.0 ship):
+ *  - 7 KPI cards with delta + sparkline + AnimatedCounter
+ *  - Greeting block ("Good morning, Tunde")
+ *  - Quick Actions row (4 cards)
+ *  - 06d.2 will add System Overview + Recent Activity + Recent Registrations
  */
-export default function Dashboard({ variant, kpis, queue, recentSubmissions, zonalCells, zonalSubmissions, primaryCellId, activeRole, activeGroup }: DashboardPageProps) {
+export default function Dashboard({
+    variant,
+    kpis,
+    queue,
+    recentSubmissions,
+    zonalCells,
+    zonalSubmissions,
+    primaryCellId,
+    activeRole,
+    activeGroup,
+    kpiDeltas,
+    kpiSeries,
+    rangeKey,
+    rangeFrom,
+    rangeTo,
+    rangeLabels,
+    chartSeries,
+    systemOverview,
+    globalSearchIndex,
+    recentActivity,
+    recentRegistrations,
+}: DashboardPageProps) {
+    // Phase 06d.0 — admin variant gets its own layout (sidebar + greeting).
+    // Pull the authenticated user's name for the Greeting block (auth is shared by
+    // HandleInertiaRequests::share() so it's available on every page props).
+    const authName = (usePage() as any).props?.auth?.user?.name as string | undefined;
+    if (variant === 'admin') {
+        return (
+            <AdminDashboardLayout
+                header={<AdminHeader activeRole={activeRole} activeGroup={activeGroup} />}
+                searchIndex={globalSearchIndex ?? []}
+                footer={<FooterCard appName="Summit Bible Church" appEnv={import.meta.env.MODE ?? 'local'} appVersion="1.0.0" year={new Date().getFullYear()} />}
+            >
+                <Head title="Dashboard" />
+                <ViewOnlyBanner role={activeRole} />
+                <AdminDashboard
+                    kpis={kpis as AdminKpis}
+                    kpiDeltas={kpiDeltas ?? {}}
+                    kpiSeries={kpiSeries ?? {}}
+                    userName={authName}
+                    rangeKey={rangeKey ?? 'week'}
+                    rangeFrom={rangeFrom ?? null}
+                    rangeTo={rangeTo ?? null}
+                    rangeLabels={rangeLabels ?? []}
+                    chartSeries={chartSeries ?? {}}
+                    systemOverview={systemOverview}
+                    recentActivity={recentActivity ?? []}
+                    recentRegistrations={recentRegistrations ?? []}
+                />
+            </AdminDashboardLayout>
+        );
+    }
+
     return (
         <AuthenticatedLayout
             header={
@@ -127,9 +222,7 @@ export default function Dashboard({ variant, kpis, queue, recentSubmissions, zon
                 <LeaderDashboard kpis={kpis as LeaderKpis} recentSubmissions={recentSubmissions ?? []} primaryCellId={primaryCellId} />
             ) : variant === 'zonal' ? (
                 <ZonalDashboard kpis={kpis as ZonalKpis} cells={zonalCells ?? []} submissions={zonalSubmissions ?? []} />
-            ) : (
-                <AdminDashboard kpis={kpis as AdminKpis} />
-            )}
+            ) : null}
         </AuthenticatedLayout>
     );
 }
@@ -173,7 +266,7 @@ function SectionHeader({
 
 function PageCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
     return (
-        <div className={`overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:border-gray-700 dark:bg-gray-800 ${className}`}>
+        <div className={`overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800 ${className}`}>
             {children}
         </div>
     );
@@ -347,8 +440,7 @@ const fileIconPath = (
 function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[] }) {
     return (
         <div className="space-y-8">
-            {/* Hero row: 5 KPI cards */}
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Personal KPIs" iconPath={zapIconPath} />
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                     <KPICard accent="indigo"  caption="Pending Contacts" value={kpis.pendingContacts} trend="≤ pending outreach" />
@@ -359,7 +451,7 @@ function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[
                 </div>
             </section>
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader
                     title="My Queue"
                     iconPath={queueIconPath}
@@ -430,7 +522,7 @@ function TeamDashboard({ kpis, queue, activeRole }: { kpis: TeamKpis; queue: Tea
 
     return (
         <div className="space-y-8">
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Team KPIs" iconPath={zapIconPath} />
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                     <KPICard accent="indigo"  caption="Pending Contacts" value={kpis.pendingContacts} trend="not yet contacted" />
@@ -440,7 +532,7 @@ function TeamDashboard({ kpis, queue, activeRole }: { kpis: TeamKpis; queue: Tea
                 </div>
             </section>
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader
                     title="Team Queue"
                     iconPath={queueIconPath}
@@ -533,12 +625,24 @@ const submissionTypeLabels: Record<string, string> = {
     soul: 'Soul',
 };
 
-function LeaderDashboard({ kpis, recentSubmissions, primaryCellId }: { kpis: LeaderKpis; recentSubmissions: RecentSubmission[]; primaryCellId?: string | null }) {
+function LeaderDashboard({
+    kpis,
+    recentSubmissions,
+    primaryCellId,
+    assignedGuests = [],
+    canEditImpactStatus = false,
+}: {
+    kpis: LeaderKpis;
+    recentSubmissions: RecentSubmission[];
+    primaryCellId?: string | null;
+    assignedGuests?: { id: string; guestName: string; phone: string | null; impactStatus: string | null; createdAt: string | null }[];
+    canEditImpactStatus?: boolean;
+}) {
     return (
         <div className="space-y-8">
             {primaryCellId && <LeadershipBoard cellId={primaryCellId} canView={true} />}
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Cell Snapshot" iconPath={zapIconPath} />
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                     <KPICard accent="indigo"  caption="Cell"        value={kpis.cellName} trend={kpis.memberCount > 0 ? `${kpis.memberCount} members` : 'No members'} />
@@ -548,7 +652,7 @@ function LeaderDashboard({ kpis, recentSubmissions, primaryCellId }: { kpis: Lea
                 </div>
             </section>
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Quick Submit" iconPath={zapIconPath} />
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {(['member', 'report', 'childbirth', 'soul'] as const).map((type) => (
@@ -567,7 +671,7 @@ function LeaderDashboard({ kpis, recentSubmissions, primaryCellId }: { kpis: Lea
                 </div>
             </section>
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader
                     title="Recent Submissions"
                     iconPath={fileIconPath}
@@ -614,6 +718,74 @@ function LeaderDashboard({ kpis, recentSubmissions, primaryCellId }: { kpis: Lea
                     </PageCard>
                 )}
             </section>
+
+            <section className="motion-safe:animate-fade-in">
+                <SectionHeader
+                    title="Assigned Guests"
+                    iconPath={usersIconPath}
+                    count={assignedGuests.length}
+                    action={
+                        assignedGuests.length > 0 ? (
+                            <Link
+                                href={route('guests.index')}
+                                className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                            >
+                                View all →
+                            </Link>
+                        ) : null
+                    }
+                />
+                {assignedGuests.length === 0 ? (
+                    <EmptyState
+                        title="No assigned guests yet"
+                        description={primaryCellId
+                            ? 'Guests whose nearest Impact Cell matches your primary cell will appear here.'
+                            : 'Submit your first report to anchor your cell, then assigned guests will appear here.'}
+                        iconPath={usersIconPath}
+                    />
+                ) : (
+                    <PageCard>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" data-testid="assigned-guests-table">
+                                <thead className="bg-gray-50/80 dark:bg-gray-900/60">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Name</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Phone</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Impact Status</th>
+                                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                    {assignedGuests.map((g) => (
+                                        <tr key={g.id} className="transition-colors hover:bg-indigo-50/40 dark:hover:bg-gray-700/40" data-testid={`assigned-guest-row-${g.id}`}>
+                                            <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{g.guestName}</td>
+                                            <td className="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</td>
+                                            <td className="px-4 py-3 text-sm">
+                                                <InlineImpactStatusPill
+                                                    guestId={g.id}
+                                                    current={g.impactStatus}
+                                                    canEdit={canEditImpactStatus}
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                {canEditImpactStatus && (
+                                                    <Link
+                                                        href={route('guests.edit', g.id)}
+                                                        className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                                                        data-testid={`assigned-guest-edit-${g.id}`}
+                                                    >
+                                                        Edit →
+                                                    </Link>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </PageCard>
+                )}
+            </section>
         </div>
     );
 }
@@ -621,7 +793,7 @@ function LeaderDashboard({ kpis, recentSubmissions, primaryCellId }: { kpis: Lea
 function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: ZonalCell[]; submissions: RecentSubmission[] }) {
     return (
         <div className="space-y-8">
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Zone Snapshot" iconPath={zapIconPath} />
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                     <KPICard accent="indigo"  caption="Impact Cells"     value={kpis.totalCells}        trend="in your zone" />
@@ -631,7 +803,7 @@ function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: 
                 </div>
             </section>
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Impact Cells" iconPath={usersIconPath} count={cells.length} />
                 {cells.length === 0 ? (
                     <EmptyState
@@ -645,7 +817,7 @@ function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: 
                             <Link
                                 key={c.id}
                                 href={route('impact-submissions.index')}
-                                className="group flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500"
+                                className="group flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-card transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-card-hover dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500"
                                 data-testid={`zonal-cell-${c.id}`}
                             >
                                 <span className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
@@ -661,7 +833,7 @@ function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: 
                 )}
             </section>
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader
                     title="Recent Submissions"
                     iconPath={fileIconPath}
@@ -716,7 +888,7 @@ function QuickLinkCard({ href, label, iconPath }: { href: string; label: string;
     return (
         <Link
             href={href}
-            className="group flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-5 text-sm font-semibold text-gray-700 transition-all hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-300"
+            className="group flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-5 text-sm font-semibold text-gray-700 transition-all hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 hover:shadow-card-hover dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-300"
             data-testid={`quick-link-${label.toLowerCase().replace(/\s+/g, '-')}`}
         >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 transition-transform group-hover:scale-110" aria-hidden="true">
@@ -727,25 +899,171 @@ function QuickLinkCard({ href, label, iconPath }: { href: string; label: string;
     );
 }
 
-function AdminDashboard({ kpis }: { kpis: AdminKpis }) {
+/**
+ * Phase 06d.0 — admin variant dashboard (canonical).
+ *
+ * Renders inside AdminDashboardLayout (sidebar already mounted).
+ *  - Greeting block ("Good morning, Tunde")  — uses the auth user's name prop
+ *  - 7-card row of premium KPIs with delta + sparkline + AnimatedCounter
+ *  - Quick Actions row (4 cards — phase 06 polish retained)
+ *  - 06d.2 will add System Overview + Recent Activity + Recent Registrations
+ *    sections below the Quick Actions row.
+ */
+/**
+ * Phase 06d.1 — Admin dashboard Overview Analytics section.
+ *
+ *  - DateRangeFilter is eager-mounted (no React.lazy) so the filter UI is
+ *    interactive the moment the admin dashboard mounts.
+ *  - OverviewAnalytics is React.lazy() so the recharts bundle (~150 kB)
+ *    is held back until the chart panel needs it. The Suspense fallback
+ *    uses the same fixed 320 px height as the chart canvas to prevent
+ *    CLS on first render.
+ */
+function OverviewAnalyticsSection({
+    rangeKey,
+    rangeFrom,
+    rangeTo,
+    rangeLabels,
+    chartSeries,
+}: {
+    rangeKey: string;
+    rangeFrom: string | null;
+    rangeTo: string | null;
+    rangeLabels: string[];
+    chartSeries: Record<string, number[]>;
+}) {
     return (
-        <div className="space-y-8">
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+        <section
+            className="motion-safe:animate-fade-in space-y-4"
+            data-testid="overview-analytics-root"
+        >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Overview Analytics</h3>
+                <DateRangeFilter rangeKey={rangeKey} customFrom={rangeFrom} customTo={rangeTo} />
+            </div>
+            <Suspense
+                fallback={
+                    <div
+                        data-testid="overview-analytics-skeleton"
+                        className="min-h-[320px] animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                    />
+                }
+            >
+                <OverviewAnalytics series={chartSeries} labels={rangeLabels} />
+            </Suspense>
+        </section>
+    );
+}
+
+function AdminDashboard({
+    kpis,
+    kpiDeltas = {},
+    kpiSeries = {},
+    userName,
+    rangeKey,
+    rangeFrom,
+    rangeTo,
+    rangeLabels,
+    chartSeries,
+    systemOverview,
+    recentActivity = [],
+    recentRegistrations = [],
+}: {
+    kpis: AdminKpis;
+    kpiDeltas?: Record<string, { value: number; positiveIsGood?: boolean }>;
+    kpiSeries?: Record<string, number[]>;
+    userName?: string;
+    rangeKey?: string;
+    rangeFrom?: string | null;
+    rangeTo?: string | null;
+    rangeLabels?: string[];
+    chartSeries?: Record<string, number[]>;
+    systemOverview?: SystemOverviewStats;
+    recentActivity?: RecentActivityTile[];
+    recentRegistrations?: RegistrationItem[];
+}) {
+    return (
+        <div className="space-y-8" data-testid="admin-dashboard-root">
+            {/* Greeting — uses the actual logged-in admin's name from auth.user.name. */}
+            <section className="motion-safe:animate-fade-in" data-testid="admin-greeting-section">
+                <Greeting fullName={userName ?? 'Administrator'} activeRole="Administrator" />
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Here&rsquo;s the full picture across the Summit Bible church platform.
+                </p>
+            </section>
+
+            {/* 7-card row of premium KPIs */}
+            <section className="motion-safe:animate-fade-in" data-testid="admin-kpi-row">
                 <SectionHeader title="At a Glance" iconPath={zapIconPath} />
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <KPICard accent="indigo"  caption="Total Guests"    value={kpis.totalGuests}      trend="all records" />
-                    <KPICard accent="amber"   caption="Pending Contacts" value={kpis.pendingContacts} trend="not yet contacted" />
-                    <KPICard accent="emerald" caption="Total Calls Made" value={kpis.totalCalls}      trend="contacted" />
-                    <KPICard accent="emerald" caption="Visited"          value={kpis.visited}         trend="confirmed visits" />
-                </div>
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <KPICard accent="blue"    caption="Impact Cells" value={kpis.totalCells}        trend="registered cells" />
-                    <KPICard accent="default" caption="Submissions"  value={kpis.totalSubmissions} trend="across all types" />
-                    <KPICard accent="default" caption="Users"        value={kpis.totalUsers}       trend="system accounts" />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <KPICard
+                        accent="indigo"
+                        caption="Total Guests"
+                        value={kpis.totalGuests}
+                        delta={kpiDeltas.totalGuests}
+                        series={kpiSeries.totalGuests}
+                        animateValue={true}
+                        trend="all records"
+                    />
+                    <KPICard
+                        accent="amber"
+                        caption="Pending Contacts"
+                        value={kpis.pendingContacts}
+                        delta={kpiDeltas.pendingContacts}
+                        series={kpiSeries.pendingContacts}
+                        animateValue={true}
+                        trend="not yet contacted"
+                    />
+                    <KPICard
+                        accent="emerald"
+                        caption="Total Calls"
+                        value={kpis.totalCalls}
+                        delta={kpiDeltas.totalCalls}
+                        series={kpiSeries.totalCalls}
+                        animateValue={true}
+                        trend="guests contacted"
+                    />
+                    <KPICard
+                        accent="emerald"
+                        caption="Visited"
+                        value={kpis.visited}
+                        delta={kpiDeltas.visited}
+                        series={kpiSeries.visited}
+                        animateValue={true}
+                        trend="confirmed visits"
+                    />
+                    <KPICard
+                        accent="blue"
+                        caption="Impact Cells"
+                        value={kpis.totalCells}
+                        delta={kpiDeltas.totalCells}
+                        series={kpiSeries.totalCells}
+                        animateValue={true}
+                        trend="registered cells"
+                    />
+                    <KPICard
+                        accent="default"
+                        caption="Total Submissions"
+                        value={kpis.totalSubmissions}
+                        delta={kpiDeltas.totalSubmissions}
+                        series={kpiSeries.totalSubmissions}
+                        animateValue={true}
+                        trend="across all forms"
+                    />
+                    <KPICard
+                        accent="default"
+                        caption="Total Users"
+                        value={kpis.totalUsers}
+                        delta={kpiDeltas.totalUsers}
+                        series={kpiSeries.totalUsers}
+                        animateValue={true}
+                        trend="system accounts"
+                    />
                 </div>
             </section>
 
-            <section className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+            {/* Quick Actions — 4 cards (Phase 06 polish preserved) */}
+            <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Quick Actions" iconPath={zapIconPath} />
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <QuickLinkCard
@@ -770,6 +1088,22 @@ function AdminDashboard({ kpis }: { kpis: AdminKpis }) {
                     />
                 </div>
             </section>
+
+            {/* Phase 06d.1 — DateRangeFilter (eager) + lazy-loaded OverviewAnalytics */}
+            <OverviewAnalyticsSection
+                rangeKey={rangeKey ?? 'week'}
+                rangeFrom={rangeFrom ?? null}
+                rangeTo={rangeTo ?? null}
+                rangeLabels={rangeLabels ?? []}
+                chartSeries={chartSeries ?? {}}
+            />
+
+            {/* Phase 06d.2 — System Overview + Recent Activity + Recent Registrations */}
+            <SystemOverviewPanel
+                stats={systemOverview ?? { dbSizeMb: 0, dbSizeLabel: '—', storageMb: 0, storageLabel: '—', activeUsers: 0, healthLabel: 'Healthy', healthTone: 'success' }}
+            />
+            <RecentActivityGrid tiles={recentActivity} />
+            <RecentRegistrationsFeed items={recentRegistrations} />
         </div>
     );
 }
