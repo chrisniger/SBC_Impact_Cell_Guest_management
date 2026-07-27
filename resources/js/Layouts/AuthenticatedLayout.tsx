@@ -32,11 +32,12 @@ type AuthPageProps = Record<string, any> & {
 
 // Phase 05 — role-aware nav. The active role's 3-group key drives this.
 //
-//   Administrator            → full admin nav (Dashboard, Guests, Impact Cells, Profile)
+//   Administrator            → full admin nav
 //   Supervisor               → Dashboard, Guests (read-only), Profile
 //   followUpOfficer group    → Dashboard, My Guests, Profile
-//   followUpTeam group       → Dashboard, My Guests, Profile  (Team Queue hides via /guests subset)
-//   impactCell group         → Dashboard, My Guests, Profile  (Cell Leader view lands in Phase 07)
+//   followUpTeam group       → Dashboard, My Guests, Profile
+//   impactCell group         → Dashboard, My Reports, Soul Search
+//   Impact_Zonal_Cordinator  → Dashboard, Impact Cells, Guests, Reports, Export CSV
 //
 // Hidden fields stay hidden — admin links are completely absent for non-admin
 // active roles (not just visually muted).
@@ -45,26 +46,24 @@ type NavItem = { label: string; href: string; routeName: string };
 function navItemsFor(activeRole: string | null, activeGroup: string | null): NavItem[] {
     if (activeRole === 'Administrator') {
         return [
-            { label: 'Dashboard',              href: route('dashboard'),                       routeName: 'dashboard' },
-            { label: 'Guests',                 href: route('guests.index'),                    routeName: 'guests.index' },
-            { label: 'Impact Cells',           href: route('impact-cells.index'),              routeName: 'impact-cells.index' },
-            { label: 'Reports',                href: route('reports.index'),                   routeName: 'reports.index' },
-            { label: 'CSV Import',             href: route('csv.import'),                      routeName: 'csv.import' },
-            { label: 'Notifications',          href: route('notification-settings.index'),     routeName: 'notification-settings.index' },
-            { label: 'Audit Log',              href: route('audit.index'),                     routeName: 'audit.index' },
+            { label: 'Dashboard',      href: route('dashboard'),                       routeName: 'dashboard' },
+            { label: 'Guests',         href: route('guests.index'),                    routeName: 'guests.index' },
+            { label: 'Impact Cells',   href: route('impact-cells.index'),              routeName: 'impact-cells.index' },
+            { label: 'Reports',        href: route('reports.index'),                   routeName: 'reports.index' },
+            { label: 'CSV Import',     href: route('csv.import'),                      routeName: 'csv.import' },
+            { label: 'Notifications',  href: route('notification-settings.index'),     routeName: 'notification-settings.index' },
+            { label: 'Audit Log',      href: route('audit.index'),                     routeName: 'audit.index' },
         ];
     }
-    // Officer / Team / Cell Leader — keep nav minimal + role-scoped.
     if (activeRole === 'Impact_Zonal_Cordinator') {
         return [
-            { label: 'Dashboard',              href: route('dashboard'),                       routeName: 'dashboard' },
-            { label: 'Impact Cells',           href: route('impact-cells.index'),              routeName: 'impact-cells.index' },
-            { label: 'Guests',                 href: route('guests.index'),                    routeName: 'guests.index' },
-            { label: 'Reports',                href: route('reports.index'),                   routeName: 'reports.index' },
-            { label: 'Export CSV',             href: route('csv.export'),                      routeName: 'csv.export' },
+            { label: 'Dashboard',    href: route('dashboard'),                       routeName: 'dashboard' },
+            { label: 'Impact Cells', href: route('impact-cells.index'),              routeName: 'impact-cells.index' },
+            { label: 'Guests',       href: route('guests.index'),                    routeName: 'guests.index' },
+            { label: 'Reports',      href: route('reports.index'),                   routeName: 'reports.index' },
+            { label: 'Export CSV',   href: route('csv.export'),                      routeName: 'csv.export' },
         ];
     }
-
     if (activeRole === 'Supervisor') {
         return [
             { label: 'Dashboard',   href: route('dashboard'),    routeName: 'dashboard' },
@@ -86,7 +85,6 @@ function navItemsFor(activeRole: string | null, activeGroup: string | null): Nav
             { label: 'Soul Search', href: route('impact-submissions.soul-search'),   routeName: 'impact-submissions.soul-search' },
         ];
     }
-    // Last-resort fallback (no role, null active role, multi-role out of scope).
     return [
         { label: 'Dashboard', href: route('dashboard'), routeName: 'dashboard' },
     ];
@@ -106,33 +104,40 @@ export default function Authenticated({
     const currentRoute = route().current();
 
     return (
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-            <nav className="border-b border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div className="flex h-16 justify-between">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-slate-950">
+            {/* Top-bar — glassmorphism, sticky */}
+            <nav className="sticky top-0 z-30 border-b border-gray-200/60 bg-white/80 backdrop-blur-md dark:border-gray-800/60 dark:bg-gray-900/80">
+                <div className="mx-auto max-w-[88rem] px-4 sm:px-6 lg:px-8">
+                    <div className="flex h-[60px] justify-between">
                         <div className="flex">
                             <div className="flex shrink-0 items-center">
-                                <Link href="/">
-                                    <ApplicationLogo className="block h-9 w-auto fill-current text-gray-800 dark:text-gray-200" />
+                                <Link href="/" className="group">
+                                    <ApplicationLogo className="block h-9 w-auto fill-current text-gray-800 transition-transform duration-200 group-hover:scale-105 dark:text-gray-200" />
                                 </Link>
                             </div>
 
-                            <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
+                            <div className="hidden space-x-2 sm:-my-px sm:ms-10 sm:flex">
                                 {navItems.map((item) => (
                                     <NavLink
                                         key={item.routeName}
                                         href={item.href}
                                         active={currentRoute === item.routeName}
                                         data-testid={`nav-${item.routeName}`}
+                                        className="relative inline-flex items-center px-3 py-1 text-sm font-medium leading-5 text-gray-600 transition duration-150 ease-in-out hover:text-gray-900 focus:outline-none dark:text-gray-300 dark:hover:text-white"
                                     >
                                         {item.label}
+                                        {currentRoute === item.routeName && (
+                                            <span
+                                                aria-hidden="true"
+                                                className="absolute inset-x-2 -bottom-[1px] h-0.5 rounded-full bg-indigo-500"
+                                            />
+                                        )}
                                     </NavLink>
                                 ))}
                             </div>
                         </div>
 
                         <div className="hidden sm:ms-6 sm:flex sm:items-center">
-                            {/* Phase 02 — role switcher (visible only for multi-role users) */}
                             {user.hasMultipleRoles && (
                                 <RoleSwitcher
                                     roles={user.roles}
@@ -143,19 +148,19 @@ export default function Authenticated({
                             <div className="relative ms-3">
                                 <Dropdown>
                                     <Dropdown.Trigger>
-                                        <span className="inline-flex rounded-md">
+                                        <span className="inline-flex rounded-full">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
+                                                className="inline-flex items-center gap-2 rounded-full border border-gray-200/80 bg-white/80 px-2.5 py-1.5 text-sm font-medium leading-4 text-gray-700 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition duration-150 ease-in-out hover:border-gray-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-800"
                                             >
                                                 <RoleBadge role={user.activeRole} />
-                                                <span className="ms-2">{user.name}</span>
-
+                                                <span className="hidden truncate max-w-[10rem] sm:inline">{user.name}</span>
                                                 <svg
-                                                    className="-me-0.5 ms-2 h-4 w-4"
+                                                    className="h-4 w-4 text-gray-400"
                                                     xmlns="http://www.w3.org/2000/svg"
                                                     viewBox="0 0 20 20"
                                                     fill="currentColor"
+                                                    aria-hidden="true"
                                                 >
                                                     <path
                                                         fillRule="evenodd"
@@ -171,9 +176,7 @@ export default function Authenticated({
                                         <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
                                             Signed in as <span className="font-semibold">{user.email}</span>
                                         </div>
-                                        <Dropdown.Link
-                                            href={route('profile.edit')}
-                                        >
+                                        <Dropdown.Link href={route('profile.edit')}>
                                             Profile
                                         </Dropdown.Link>
                                         <Dropdown.Link
@@ -190,36 +193,25 @@ export default function Authenticated({
 
                         <div className="-me-2 flex items-center sm:hidden">
                             <button
-                                onClick={() =>
-                                    setShowingNavigationDropdown(
-                                        (previousState) => !previousState,
-                                    )
-                                }
-                                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:bg-gray-100 focus:text-gray-500 focus:outline-none dark:text-gray-500 dark:hover:bg-gray-900 dark:hover:text-gray-400 dark:focus:bg-gray-900 dark:focus:bg-gray-400"
+                                onClick={() => setShowingNavigationDropdown((p) => !p)}
+                                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-white/60 hover:text-gray-500 focus:bg-white/60 focus:text-gray-500 focus:outline-none dark:text-gray-500 dark:hover:bg-gray-900/60 dark:hover:text-gray-400"
                             >
                                 <svg
                                     className="h-6 w-6"
                                     stroke="currentColor"
                                     fill="none"
                                     viewBox="0 0 24 24"
+                                    aria-hidden="true"
                                 >
                                     <path
-                                        className={
-                                            !showingNavigationDropdown
-                                                ? 'inline-flex'
-                                                : 'hidden'
-                                        }
+                                        className={!showingNavigationDropdown ? 'inline-flex' : 'hidden'}
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         strokeWidth="2"
                                         d="M4 6h16M4 12h16M4 18h16"
                                     />
                                     <path
-                                        className={
-                                            showingNavigationDropdown
-                                                ? 'inline-flex'
-                                                : 'hidden'
-                                        }
+                                        className={showingNavigationDropdown ? 'inline-flex' : 'hidden'}
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         strokeWidth="2"
@@ -232,12 +224,9 @@ export default function Authenticated({
                 </div>
 
                 <div
-                    className={
-                        (showingNavigationDropdown ? 'block' : 'hidden') +
-                        ' sm:hidden'
-                    }
+                    className={(showingNavigationDropdown ? 'block' : 'hidden') + ' sm:hidden'}
                 >
-                    <div className="space-y-1 pb-3 pt-2">
+                    <div className="space-y-1 border-t border-gray-200/60 bg-white/90 px-4 pb-3 pt-2 backdrop-blur-md dark:border-gray-800/60 dark:bg-gray-900/90">
                         {navItems.map((item) => (
                             <ResponsiveNavLink
                                 key={item.routeName}
@@ -249,8 +238,7 @@ export default function Authenticated({
                         ))}
                     </div>
 
-                    {/* Phase 02 — mobile menu shows role badge + (for multi-role) a role list */}
-                    <div className="border-t border-gray-200 pb-1 pt-4 dark:border-gray-600">
+                    <div className="border-t border-gray-200/60 bg-white/90 pb-3 pt-4 backdrop-blur-md dark:border-gray-800/60 dark:bg-gray-900/90">
                         <div className="px-4">
                             <div className="flex items-center gap-2 text-base font-medium text-gray-800 dark:text-gray-200">
                                 {user.name}
@@ -266,12 +254,9 @@ export default function Authenticated({
                                 <p className="text-xs uppercase tracking-wide text-gray-400">Switch role</p>
                                 {user.roles.map((role) =>
                                     role === user.activeRole ? (
-                                        // Plain span for the active role — NOT a link/button,
-                                        // so clicking it does nothing (no scroll-to-top).
-                                        // Visually distinct via font-semibold + darker text.
                                         <span
                                             key={role}
-                                            className="block w-full px-4 py-2 text-start text-sm leading-5 font-semibold text-gray-900 dark:text-gray-100"
+                                            className="block w-full px-4 py-2 text-start text-sm font-semibold text-gray-900 dark:text-gray-100"
                                         >
                                             {role} ✓
                                         </span>
@@ -280,7 +265,7 @@ export default function Authenticated({
                                             key={role}
                                             type="button"
                                             onClick={() => router.post('/auth/switch-role', { role })}
-                                            className="block w-full px-4 py-2 text-start text-sm leading-5 text-gray-700 transition duration-150 ease-in-out hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-300 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                                            className="block w-full px-4 py-2 text-start text-sm text-gray-700 transition duration-150 ease-in-out hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-300 dark:hover:bg-gray-800"
                                             data-testid={`mobile-role-switch-${role}`}
                                         >
                                             {role}
@@ -306,15 +291,36 @@ export default function Authenticated({
                 </div>
             </nav>
 
+            {/* Header band — glassmorphism */}
             {header && (
-                <header className="bg-white shadow dark:bg-gray-800">
-                    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                <header className="sticky top-[60px] z-20 border-b border-gray-200/60 bg-white/70 backdrop-blur-md dark:border-gray-800/60 dark:bg-gray-900/70">
+                    <div className="mx-auto max-w-[88rem] px-4 py-6 sm:px-6 lg:px-8">
                         {header}
                     </div>
                 </header>
             )}
 
-            <main>{children}</main>
+            {/* Main content — motion-safe fade-in, max-w-[88rem] on 2xl+ */}
+            <main className="motion-safe:animate-[fadeIn_0.4s_ease-out]">
+                <div className="mx-auto max-w-[88rem] px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+                    {children}
+                </div>
+            </main>
+
+            {/*
+              The `fadeIn` keyframe is referenced by every authenticated page
+              via `motion-safe:animate-[fadeIn_0.4s_ease-out]` (Dashboard, Guests/*,
+              ImpactCells/*, ImpactSubmissions/*, Reports, Audit, Notifications,
+              Profile, Csv). Authenticated pages do NOT render GuestLayout, so
+              the `@keyframes fadeIn` declaration must live here (we also keep
+              a copy in GuestLayout so the auth-flow pages still animate).
+            */}
+            <style>{`
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(6px); }
+                    to   { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
         </div>
     );
 }
