@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import { PageProps } from '@/types';
 import { Head } from '@inertiajs/react';
 import { ReactNode } from 'react';
@@ -31,7 +31,7 @@ function ProfileSection({ title, iconPath, children, testId }: { title: string; 
 
 export default function Edit({ mustVerifyEmail, status }: PageProps<{ mustVerifyEmail: boolean; status?: string }>) {
     return (
-        <AuthenticatedLayout header={
+        <AdminDashboardLayout header={
             <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
                     Account
@@ -63,6 +63,6 @@ export default function Edit({ mustVerifyEmail, status }: PageProps<{ mustVerify
                     <DeleteUserForm className="max-w-xl" />
                 </ProfileSection>
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

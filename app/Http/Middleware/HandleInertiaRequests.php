@@ -51,6 +51,13 @@ class HandleInertiaRequests extends Middleware
                     'hasMultipleRoles' => $user->getRoleNames()->count() > 1,
                 ],
             ],
+            // Phase 06e+2 — route names whose sidebar entries should be
+            // hidden in the current environment. Backend owns the gate
+            // (GateStubPagesByEnvironment::GATED_ROUTES + REVEAL_ENVS);
+            // this prop is the wire-format the AdminSidebar reads via
+            // `usePage().props.gatedNavRoutes`. Empty list in reveal envs
+            // (local/staging/testing) so verifiers see every entry.
+            'gatedNavRoutes' => GateStubPagesByEnvironment::hiddenNavRouteNames(),
         ];
     }
 }

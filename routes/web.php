@@ -72,13 +72,40 @@ Route::middleware('auth')->group(function () {
     // Impact_Leaders data-leak fix: index() filters primaries to ones the leader has submissions under.
     Route::get('/leadership', [\App\Http\Controllers\LeadershipBoardController::class, 'index'])->name('leadership.index');
 
-    // Phase 06d.0 — admin sidebar stub pages (wire 6 new nav entries).
-    // Real implementations land in Phase 06e+ per Implementation/Phase_06b-06c_UI_Polish.md.
+    // Phase 06d.0 stub pages — submissions still renders its "Open submissions" link
+    // (stays live everywhere). Roles-permissions + messages + analytics remain
+    // honest placeholders and are gated behind local/staging by the
+    // `gate.stubs` middleware (see GateStubPagesByEnvironment).
     Route::get('/admin/submissions',              fn () => Inertia::render('Admin/Submissions/Index'))->name('admin.submissions.index');
-    Route::get('/admin/users',                    fn () => Inertia::render('Admin/Users/Index'))->name('admin.users.index');
-    Route::get('/admin/roles-permissions',        fn () => Inertia::render('Admin/RolesPermissions/Index'))->name('admin.roles-permissions.index');
-    Route::get('/admin/messages',                 fn () => Inertia::render('Admin/Messages/Index'))->name('admin.messages.index');
-    Route::get('/admin/analytics',                fn () => Inertia::render('Admin/Analytics/Index'))->name('admin.analytics.index');
+    Route::get('/admin/roles-permissions',        fn () => Inertia::render('Admin/RolesPermissions/Index'))->name('admin.roles-permissions.index')->middleware('gate.stubs');
+    Route::get('/admin/messages',                 fn () => Inertia::render('Admin/Messages/Index'))->name('admin.messages.index')->middleware('gate.stubs');
+    Route::get('/admin/analytics',                fn () => Inertia::render('Admin/Analytics/Index'))->name('admin.analytics.index')->middleware('gate.stubs');
+
+    // Phase 06e+1 — Admin/Users real CRUD (was a Phase 06d.0 stub).
+    // Administrator-only via UserPolicy (auto-discovered). The inline
+    // delete endpoint enforces a self-delete guard; PATCH role enforces
+    // the canSwitchTo() check from the User model.
+    //
+    // Phase 06e+2 — the GET index is gated behind `gate.stubs` so the
+    // CRUD page is hidden in production (mirrors the other 3 admin
+    // stubs). The POST/PATCH/DELETE write endpoints deliberately stay
+    // available so future migrations can pre-create users without
+    // exposing the listing UI prematurely — flip UserController::index
+    // to a non-gated Inertia render when ready to ship.
+    //
+    // Phase 06e+3 — added GET edit + PUT update + PATCH restore + the
+    // `?filter=trashed` query param surfaced to the Index page. Three
+    // new routes (`edit`, `update`, `restore`) ALSO get `gate.stubs`
+    // — they live in admin space and are intentionally disabled in
+    // production until Phase 06e+4 ships the full migration of the
+    // User CRUD into the production admin chrome.
+    Route::get   ('/admin/users',                  [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('admin.users.index')->middleware('gate.stubs');
+    Route::post  ('/admin/users',                  [\App\Http\Controllers\Admin\UserController::class, 'store'])->name('admin.users.store');
+    Route::get   ('/admin/users/{user}/edit',      [\App\Http\Controllers\Admin\UserController::class, 'edit'])->name('admin.users.edit')->middleware('gate.stubs');
+    Route::put   ('/admin/users/{user}',           [\App\Http\Controllers\Admin\UserController::class, 'update'])->name('admin.users.update')->middleware('gate.stubs');
+    Route::patch ('/admin/users/{user}/role',      [\App\Http\Controllers\Admin\UserController::class, 'updateRole'])->name('admin.users.update-role');
+    Route::patch ('/admin/users/{user}/restore',   [\App\Http\Controllers\Admin\UserController::class, 'restore'])->name('admin.users.restore')->middleware('gate.stubs');
+    Route::delete('/admin/users/{user}',           [\App\Http\Controllers\Admin\UserController::class, 'destroy'])->name('admin.users.destroy');
 
     // Phase 09 — Notification settings (Admin only).
     Route::get   ('/notification-settings',               [\App\Http\Controllers\NotificationSettingsController::class, 'index'])->name('notification-settings.index');

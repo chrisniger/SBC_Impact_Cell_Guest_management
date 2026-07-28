@@ -6,6 +6,7 @@ use App\Models\Guest;
 use App\Models\ImpactCell;
 use App\Models\ImpactSubmission;
 use App\Models\User;
+use App\Support\RoleHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -52,6 +53,14 @@ class DashboardController extends Controller
         $user = $request->user();
         $role = $user?->activeRole();
         $group = $user?->activeGroup();
+
+        // Phase 09 — Impact_Cell_Admin (cross-cell + cross-zonal supervisor)
+        // gets its own dashboard variant. Routed BEFORE the zonal/group
+        // match so it short-circuits leaderDashboard() which would
+        // otherwise pin them to a single primary cell.
+        if (RoleHelper::isImpactCellAdmin($role)) {
+            return $this->impactCellAdminDashboard($request, $role);
+        }
 
         if ($role === 'Impact_Zonal_Cordinator') {
             return $this->zonalDashboard($user, $role);
@@ -320,6 +329,101 @@ class DashboardController extends Controller
     }
 
     /**
+     * Phase 09 — Impact Cell Administrator dashboard (cross-cell + cross-zonal supervisor).
+     *
+     * Spec: "the role Impact_Cell_Admin should view all activities from the impact
+     * cel units and zonal cordinators. this role server as the adminitrator for
+     * impact cell, and zonal cordinators".
+     *
+     * Surface:
+     *   - LeadershipRollup (one card per primary — same widget admin uses) — gives
+     *     a single-screen overscan of every primary's engagement delta.
+     *   - Recent cross-cell submissions feed (filtered server-side to
+     *     GROUP_IMPACT_CELL authors; matches ImpactSubmissionController::index()
+     *     scope).
+     *   - Recent zonal-coordinator submissions feed (same scope, but filtered to
+     *     Impact_Zonal_Cordinator role only).
+     *   - KPIs: total primaries, total sub-cells, total cross-group users,
+     *     submissions in last 7d.
+     *
+     * Why a dedicated variant (vs reusing `impactCell`/LeaderDashboard): LeaderDashboard
+     * keys off the user's most-used sub-cell and renders ONE primary's full board —
+     * semantically wrong for a supervisor who needs cross-cell visibility.
+     */
+    private function impactCellAdminDashboard(Request $request, ?string $role): Response
+    {
+        $now = now();
+        $weekStart = $now->copy()->subDays(7);
+
+        // Cross-cell submission KPIs (filtered to GROUP_IMPACT_CELL authors).
+        $crossGroupBase = ImpactSubmission::query()
+            ->whereHas('user', fn ($q) => $q->whereIn('active_role', RoleHelper::GROUP_IMPACT_CELL));
+
+        $totalSubmissions = (clone $crossGroupBase)->count();
+        $weekSubmissions = (clone $crossGroupBase)->where('created_at', '>=', $weekStart)->count();
+
+        $cellCounts = [
+            'totalPrimaries' => (int) ImpactCell::primary()->count(),
+            'totalSubCells'  => (int) ImpactCell::sub()->count(),
+            'crossGroupUsers'=> (int) User::query()->whereIn('active_role', RoleHelper::GROUP_IMPACT_CELL)->count(),
+            'zonalCoordinators' => (int) User::query()->where('active_role', 'Impact_Zonal_Cordinator')->count(),
+        ];
+
+        // Recent cross-cell submissions feed (mixed-source across groupImpactCell authors).
+        $recentCrossCellSubs = (clone $crossGroupBase)
+            ->with(['impactCell:id,name', 'user:id,name,active_role'])
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (ImpactSubmission $s) => [
+                'id'         => $s->id,
+                'type'       => $s->type,
+                'cellName'   => $s->impactCell?->name,
+                'preview'    => $s->data['full_name'] ?? $s->data['name'] ?? '—',
+                'authorName' => $s->user?->name,
+                'authorRole' => $s->user?->active_role,
+                'createdAt'  => $s->created_at?->toIso8601String(),
+            ])->all();
+
+        // Zonal-specific feed — same GROUP_IMPACT_CELL authors but narrowed to
+        // Impact_Zonal_Cordinator so the supervisor can audit zonal activity
+        // separately from cell-leader activity.
+        $recentZonalSubs = ImpactSubmission::query()
+            ->whereHas('user', fn ($q) => $q->where('active_role', 'Impact_Zonal_Cordinator'))
+            ->with(['impactCell:id,name', 'user:id,name'])
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (ImpactSubmission $s) => [
+                'id'         => $s->id,
+                'type'       => $s->type,
+                'cellName'   => $s->impactCell?->name,
+                'preview'    => $s->data['full_name'] ?? $s->data['name'] ?? '—',
+                'authorName' => $s->user?->name,
+                'createdAt'  => $s->created_at?->toIso8601String(),
+            ])->all();
+
+        return Inertia::render('Dashboard', [
+            'variant'        => 'impactCellAdmin',
+            'kpis'           => [
+                'totalPrimaries'    => $cellCounts['totalPrimaries'],
+                'totalSubCells'     => $cellCounts['totalSubCells'],
+                'crossGroupUsers'   => $cellCounts['crossGroupUsers'],
+                'zonalCoordinators' => $cellCounts['zonalCoordinators'],
+                'totalSubmissions'  => (int) $totalSubmissions,
+                'weekSubmissions'   => (int) $weekSubmissions,
+            ],
+            'queue'              => [],
+            'recentCrossCellSubs'=> $recentCrossCellSubs,
+            'recentZonalSubs'    => $recentZonalSubs,
+            'leadershipRollup'   => $this->buildLeadershipRollup(),
+            'globalSearchIndex'  => $this->buildGlobalSearchIndex(),
+            'activeRole'         => $role,
+            'activeGroup'        => 'impactCell',
+        ]);
+    }
+
+    /**
      * Impact Zonal Cordinator dashboard.
      *
      * Shows all impact cells, recent submissions across their cells,
@@ -454,9 +558,142 @@ class DashboardController extends Controller
             'globalSearchIndex'   => $this->buildGlobalSearchIndex(),
             'recentActivity'      => $this->buildRecentActivityTiles(),
             'recentRegistrations' => $this->buildRecentRegistrations(),
+            // Phase 08+ — admin-wide leadership rollup (one compact card per primary,
+            // computed via 3 bulk queries → no N+1). Renders below the chart panel
+            // and links through to /leadership (the stacked multi-board Inertia page).
+            'leadershipRollup'    => $this->buildLeadershipRollup(),
             'activeRole'  => $role,
             'activeGroup' => $group,
         ]);
+    }
+
+    /**
+     * Phase 08+ — overall leadership tree surface for the ADMIN dashboard.
+     *
+     * One compact card per primary cell. Built via 3 bulk queries (sub-cell map,
+     * submission counts by type, latest report timestamp per primary) so an admin
+     * with 65 primaries triggers ≤5 SQL roundtrips total — no N+1.
+     *
+     * Output shape per primary:
+     *   { id, name, subCells, members, souls, childbirths, status, lastReportDate,
+     *     href }
+     *
+     * `status` matches the per-tile convention from LeadershipBoardController::
+     * buildBoardData() so frontend status pills render with identical colors:
+     *   Submitted  ≤7 days,  Pending 8-14,  Overdue >14,  New never reported.
+     *
+     * Returns [] when no primaries exist (defensive — admin can still render
+     * an EmptyState).
+     *
+     * SoftDeletes handling: `ImpactCell` does NOT use the SoftDeletes trait
+     * (verified against `app/Models/ImpactCell.php` + the
+     * `2026_07_27_120000_create_impact_cells_table.php` migration — the table
+     * has no `deleted_at` column), so rollup totals simply count every live
+     * sub-cell. If soft-delete is added to `ImpactCell` later, add a
+     * `whereNull('deleted_at')` filter to BOTH Q2 and Q3 — the dual-filter
+     * pattern (one in Eloquent Q1 + one in DB::table joins) is irrelevant today
+     * because there is no `deleted_at` column to filter on.
+     */
+    private function buildLeadershipRollup(): array
+    {
+        $primaries = ImpactCell::primary()->ordered()->get();
+        if ($primaries->isEmpty()) {
+            return [];
+        }
+
+        $primaryIds = $primaries->pluck('id')->all();
+
+        // Query 1 — sub-cell map (parent_cell_id → [sub-cell id, ...]).
+        // Uses Eloquent (rather than DB::table) so future cross-cutting
+        // scopes (SoftDeletes if added later, global `where('is_active')`,
+        // tenant isolation, etc.) are honored consistently — Q2 + Q3 bulk
+        // joins intentionally bypass global scopes for performance, which
+        // is the documented trade-off.
+        $subCellMap = ImpactCell::query()
+            ->whereIn('parent_cell_id', $primaryIds)
+            ->get(['id', 'parent_cell_id'])
+            ->groupBy('parent_cell_id')
+            ->map(fn ($rows) => $rows->pluck('id')->all())
+            ->all();
+
+        // Flattened list of every sub-cell id across every primary → reuse for
+        // queries 2 and 3 (single IN list, no per-primary loop).
+        $subCellIds = collect($subCellMap)->flatten()->unique()->values()->all();
+
+        // Query 2 — submission counts grouped by (primary, type) in ONE join.
+        // Cast → string (ImpactCell PKs are UUIDs across the codebase; React
+        // side declares `id: string` everywhere). Grouping by the raw column
+        // (not the SELECT alias) keeps this query MySQL/SQLite/PostgreSQL-
+        // portable — same philosophy as the existing seriesForRange() helper.
+        $typeCounts = []; // [primary_id][type] => int
+        if ($subCellIds !== []) {
+            DB::table('impact_submissions')
+                ->join('impact_cells', 'impact_submissions.impact_cell_id', '=', 'impact_cells.id')
+                ->whereIn('impact_submissions.impact_cell_id', $subCellIds)
+                ->select(
+                    'impact_cells.parent_cell_id',
+                    'impact_submissions.type',
+                    DB::raw('COUNT(*) as cnt')
+                )
+                ->groupBy('impact_cells.parent_cell_id', 'impact_submissions.type')
+                ->get()
+                ->each(function ($r) use (&$typeCounts) {
+                    $typeCounts[(string) $r->parent_cell_id][$r->type] = (int) $r->cnt;
+                });
+        }
+
+        // Query 3 — latest report timestamp per primary (one row per primary).
+        $lastReportAt = []; // [primary_id] => Carbon|null
+        if ($subCellIds !== []) {
+            DB::table('impact_submissions')
+                ->join('impact_cells', 'impact_submissions.impact_cell_id', '=', 'impact_cells.id')
+                ->whereIn('impact_submissions.impact_cell_id', $subCellIds)
+                ->where('impact_submissions.type', 'report')
+                ->select(
+                    'impact_cells.parent_cell_id',
+                    DB::raw('MAX(impact_submissions.created_at) as last_report')
+                )
+                ->groupBy('impact_cells.parent_cell_id')
+                ->get()
+                ->each(function ($r) use (&$lastReportAt) {
+                    $lastReportAt[(string) $r->parent_cell_id] = $r->last_report
+                        ? \Illuminate\Support\Carbon::parse($r->last_report)
+                        : null;
+                });
+        }
+
+        $now = now();
+        return $primaries->map(function (ImpactCell $primary) use ($subCellMap, $typeCounts, $lastReportAt, $now) {
+            $subIds = $subCellMap[$primary->id] ?? [];
+
+            $members = (int) ($typeCounts[$primary->id]['member'] ?? 0);
+            $souls = (int) ($typeCounts[$primary->id]['soul'] ?? 0);
+            $childbirths = (int) ($typeCounts[$primary->id]['childbirth'] ?? 0);
+
+            // Per-primary report status — same convention as the per-tile logic
+            // in LeadershipBoardController::buildBoardData() so the pill colors
+            // match between admin rollup and per-board view.
+            $lastReport = $lastReportAt[$primary->id] ?? null;
+            $status = 'New';
+            if ($lastReport !== null) {
+                $days = (int) $lastReport->diffInDays($now);
+                if ($days <= 7)       { $status = 'Submitted'; }
+                elseif ($days <= 14)  { $status = 'Pending'; }
+                else                  { $status = 'Overdue'; }
+            }
+
+            return [
+                'id'             => (string) $primary->id,
+                'name'           => $primary->name,
+                'subCells'       => count($subIds),
+                'members'        => $members,
+                'souls'          => $souls,
+                'childbirths'    => $childbirths,
+                'status'         => $status,
+                'lastReportDate' => $lastReport?->toIso8601String(),
+                'href'           => route('leadership.index'),
+            ];
+        })->values()->all();
     }
 
     /**

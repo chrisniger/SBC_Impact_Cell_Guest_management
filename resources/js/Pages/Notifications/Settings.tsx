@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
 import StatusPill from '@/Components/StatusPill';
 import { Head, router, usePage } from '@inertiajs/react';
@@ -45,7 +45,7 @@ export default function Settings() {
     };
 
     return (
-        <AuthenticatedLayout header={
+        <AdminDashboardLayout header={
             <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
                     Settings
@@ -191,6 +191,6 @@ export default function Settings() {
                     )}
                 </section>
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

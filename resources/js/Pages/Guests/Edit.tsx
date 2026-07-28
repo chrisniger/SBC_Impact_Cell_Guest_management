@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import ContactsTimeline from '@/Components/ContactsTimeline';
 import { Head, Link, useForm } from '@inertiajs/react';
 import React, { FormEventHandler, ReactNode } from 'react';
@@ -127,7 +127,7 @@ export default function Edit({ guest, editableFields, impactCells, activeRole }:
     const nothingEditable = editableFields.length === 0;
 
     return (
-        <AuthenticatedLayout
+        <AdminDashboardLayout
             header={
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
@@ -235,6 +235,12 @@ export default function Edit({ guest, editableFields, impactCells, activeRole }:
                                 <FormField label="Phone" id="phone" error={fieldErr('phone')}>
                                     <input id="phone" type="tel" value={data.phone ?? ''}
                                         onChange={(e) => setData('phone', e.target.value)} className={inputCls} />
+                                </FormField>
+                            )}
+                            {canEdit('email') && (
+                                <FormField label="Email" id="email" error={fieldErr('email')}>
+                                    <input id="email" type="email" value={data.email ?? ''}
+                                        onChange={(e) => setData('email', e.target.value)} className={inputCls} />
                                 </FormField>
                             )}
                             {canEdit('join_when') && (
@@ -403,6 +409,6 @@ export default function Edit({ guest, editableFields, impactCells, activeRole }:
                     </div>
                 </form>
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

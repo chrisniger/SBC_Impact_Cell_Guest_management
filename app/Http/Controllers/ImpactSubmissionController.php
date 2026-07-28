@@ -27,7 +27,12 @@ class ImpactSubmissionController extends Controller
         $query = ImpactSubmission::with(['impactCell:id,name', 'user:id,name'])
             ->orderByDesc('created_at');
 
-        if ($group === 'impactCell') {
+        if (RoleHelper::isImpactCellAdmin($role)) {
+            // Phase 09 — cross-cell supervisor scope: every submission by any
+            // user whose active_role ∈ GROUP_IMPACT_CELL (leaders, cell admins,
+            // cell report, zonal coordinator).
+            $query->whereHas('user', fn ($q) => $q->whereIn('active_role', RoleHelper::GROUP_IMPACT_CELL));
+        } elseif ($group === 'impactCell') {
             $query->forUser($user->id);
         }
 
@@ -182,7 +187,9 @@ class ImpactSubmissionController extends Controller
         $query = ImpactSubmission::with(['impactCell:id,name'])
             ->orderByDesc('created_at');
 
-        if ($group === 'impactCell') {
+        if (RoleHelper::isImpactCellAdmin($role)) {
+            $query->whereHas('user', fn ($q) => $q->whereIn('active_role', RoleHelper::GROUP_IMPACT_CELL));
+        } elseif ($group === 'impactCell') {
             $query->forUser($user->id);
         }
 

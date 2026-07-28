@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
 import StatusPill from '@/Components/StatusPill';
 import { Head, Link } from '@inertiajs/react';
@@ -22,7 +22,7 @@ export default function ImpactCellsIndex({ cells, activeRole }: { cells: ImpactC
     const emptyIconPath = <><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>;
 
     return (
-        <AuthenticatedLayout
+        <AdminDashboardLayout
             header={
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
@@ -91,6 +91,6 @@ export default function ImpactCellsIndex({ cells, activeRole }: { cells: ImpactC
                     </div>
                 </div>
             )}
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

@@ -1,9 +1,9 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
 import Greeting from '@/Components/Greeting';
 import KPICard from '@/Components/KPICard';
 import LeadershipBoard from '@/Components/LeadershipBoard';
+import LeadershipRollupWidget, { LeadershipRollupItem } from '@/Components/LeadershipRollupWidget';
 import StatusPill from '@/Components/StatusPill';
 import ViewOnlyBanner from '@/Components/ViewOnlyBanner';
 import FooterCard from '@/Components/FooterCard';
@@ -84,6 +84,27 @@ type ZonalKpis = {
     contactedGuests: number;
 };
 
+// Phase 09 — Impact Cell Administrator (cross-cell + cross-zonal supervisor).
+type ImpactCellAdminKpis = {
+    totalPrimaries: number;
+    totalSubCells: number;
+    crossGroupUsers: number;
+    zonalCoordinators: number;
+    totalSubmissions: number;
+    weekSubmissions: number;
+};
+
+// Phase 09 — cross-group submission feed envelope.
+type ImpactCellAdminSubmission = {
+    id: string;
+    type: string;
+    cellName: string | null;
+    preview: string;
+    authorName: string | null;
+    authorRole?: string | null;
+    createdAt: string | null;
+};
+
 type ZonalCell = { id: string; name: string; is_primary: boolean };
 
 // Phase 06d.0 — per-KPI delta + sparkline type contracts.
@@ -92,8 +113,8 @@ type KpiDeltas = Record<string, KpiDelta>;
 type KpiSeries = Record<string, number[]>;
 
 type DashboardPageProps = {
-    variant: 'officer' | 'team' | 'impactCell' | 'zonal' | 'admin';
-    kpis: OfficerKpis | TeamKpis | LeaderKpis | AdminKpis | ZonalKpis | null;
+    variant: 'officer' | 'team' | 'impactCell' | 'impactCellAdmin' | 'zonal' | 'admin';
+    kpis: OfficerKpis | TeamKpis | LeaderKpis | ImpactCellAdminKpis | AdminKpis | ZonalKpis | null;
     queue: QueueRow[] | TeamQueueRow[];
     recentSubmissions?: RecentSubmission[];
     zonalCells?: ZonalCell[];
@@ -121,6 +142,13 @@ type DashboardPageProps = {
     recentActivity?: RecentActivityTile[];
     /** Phase 06d.2 — 3 mixed-source registration cards sorted desc by createdAt. */
     recentRegistrations?: RegistrationItem[];
+    /** Phase 08+ — admin-wide leadership tree rollup (one card per primary cell,
+     *  computed via 3 bulk queries server-side). Admin variant only. */
+    leadershipRollup?: LeadershipRollupItem[];
+    /** Phase 09 — Impact_Cell_Admin variant only. Cross-group submissions feed. */
+    recentCrossCellSubs?: ImpactCellAdminSubmission[];
+    /** Phase 09 — Impact_Cell_Admin variant only. Zonal-coordinator submissions feed. */
+    recentZonalSubs?: ImpactCellAdminSubmission[];
 };
 
 /** Phase 06d.0 — minimal auth user shape that the dashboard reads from usePage().props.auth.user.
@@ -130,18 +158,33 @@ type AuthLikeProps = {
 };
 
 /**
- * Dashboard — Phase 06b polish + Phase 06d.0 admin variant.
+ * Dashboard — Phase 06b polish + Phase 06d.0 admin variant, Phase 06e unified layout.
  *
- * Selects both layout (admin-only sidebar) AND content variant by `props.variant`.
+ * Selects ONLY the content variant by `props.variant`. Every role uses the
+ * SAME layout (`AdminDashboardLayout`) — there is no per-role layout branch
+ * here. The legacy `AuthenticatedLayout` was retired in Phase 06e and its
+ * chunk deleted in the layout-cleanup pass.
  *
- * Per-role variants:
- *  - officer / team / impactCell / zonal: AuthenticatedLayout (top nav only)
- *  - admin: AdminDashboardLayout (LEFT sidebar + top nav + footer skeleton)
+ * Per-role variants (content body only):
+ *  - officer:     OfficerDashboard  (Personal KPIs + My Queue)
+ *  - team:        TeamDashboard     (Team KPIs + Team Queue with inline follow-up updates)
+ *  - impactCell:  LeaderDashboard   (Cell Snapshot + Quick Submit + Recent Submissions + Assigned Guests)
+ *  - zonal:       ZonalDashboard    (Zone Snapshot + Impact Cells grid + Recent Submissions)
+ *  - admin:       AdminDashboard    (Greeting + 7-KPI row + Quick Actions + lazy OverviewAnalytics + System Overview + Recent Activity + Recent Registrations)
+ *
+ * Role-aware sidebar lives in `AdminSidebar` (Phase 06e). It renders 5
+ * grouped sections (Administrator / Impact Cell Leader / Follow-Up Officer /
+ * Follow-Up Team / Zonal Coordinator). Administrator sees all 5 with
+ * non-owner sections rendered inert ("Coming soon", cursor-not-allowed);
+ * every other role sees only the matching owner section. Phase 06f made
+ * the sidebar mobile-responsive (off-canvas drawer + hamburger toggle);
+ * Phase 06g added swipe-to-close + focus-trap + inert on the main column.
  *
  * Admin variant (Phase 06d.0 ship):
  *  - 7 KPI cards with delta + sparkline + AnimatedCounter
  *  - Greeting block ("Good morning, Tunde")
  *  - Quick Actions row (4 cards)
+ *  - 06d.1 added DateRangeFilter + lazy OverviewAnalytics (recharts ~150 kB)
  *  - 06d.2 will add System Overview + Recent Activity + Recent Registrations
  */
 export default function Dashboard({
@@ -165,20 +208,41 @@ export default function Dashboard({
     globalSearchIndex,
     recentActivity,
     recentRegistrations,
+    leadershipRollup,
+    recentCrossCellSubs,
+    recentZonalSubs,
 }: DashboardPageProps) {
-    // Phase 06d.0 — admin variant gets its own layout (sidebar + greeting).
-    // Pull the authenticated user's name for the Greeting block (auth is shared by
-    // HandleInertiaRequests::share() so it's available on every page props).
+    // Phase 06e — single shell for every role variant.
+    // AdminDashboardLayout is the unified layout; the role-aware
+    // <AdminSidebar> renders 5 grouped sections, showing all 5 with
+    // non-owner sections inert when active role is Administrator, or
+    // only the owner's section otherwise.
     const authName = (usePage() as any).props?.auth?.user?.name as string | undefined;
-    if (variant === 'admin') {
-        return (
-            <AdminDashboardLayout
-                header={<AdminHeader activeRole={activeRole} activeGroup={activeGroup} />}
-                searchIndex={globalSearchIndex ?? []}
-                footer={<FooterCard appName="Summit Bible Church" appEnv={import.meta.env.MODE ?? 'local'} appVersion="1.0.0" year={new Date().getFullYear()} />}
-            >
-                <Head title="Dashboard" />
-                <ViewOnlyBanner role={activeRole} />
+
+    const pageHeader =
+        variant === 'officer'         ? <OfficerHeader activeRole={activeRole} /> :
+        variant === 'team'            ? <TeamHeader activeRole={activeRole} activeGroup={activeGroup} /> :
+        variant === 'impactCell'      ? <LeaderHeader activeRole={activeRole} cellName={(kpis as LeaderKpis)?.cellName} /> :
+        variant === 'impactCellAdmin' ? <ImpactCellAdminHeader activeRole={activeRole} /> :
+        variant === 'zonal'           ? <ZonalHeader activeRole={activeRole} /> :
+                                         <AdminHeader activeRole={activeRole} activeGroup={activeGroup} />;
+
+    return (
+        <AdminDashboardLayout
+            header={pageHeader}
+            searchIndex={globalSearchIndex ?? []}
+            footer={
+                <FooterCard
+                    appName="Summit Bible Church"
+                    appEnv={import.meta.env.MODE ?? 'local'}
+                    appVersion="1.0.0"
+                    year={new Date().getFullYear()}
+                />
+            }
+        >
+            <Head title="Dashboard" />
+            <ViewOnlyBanner role={activeRole} />
+            {variant === 'admin' ? (
                 <AdminDashboard
                     kpis={kpis as AdminKpis}
                     kpiDeltas={kpiDeltas ?? {}}
@@ -192,38 +256,27 @@ export default function Dashboard({
                     systemOverview={systemOverview}
                     recentActivity={recentActivity ?? []}
                     recentRegistrations={recentRegistrations ?? []}
+                    leadershipRollup={leadershipRollup ?? []}
                 />
-            </AdminDashboardLayout>
-        );
-    }
-
-    return (
-        <AuthenticatedLayout
-            header={
-                variant === 'officer'
-                    ? <OfficerHeader activeRole={activeRole} />
-                    : variant === 'team'
-                    ? <TeamHeader activeRole={activeRole} activeGroup={activeGroup} />
-                    : variant === 'impactCell'
-                    ? <LeaderHeader activeRole={activeRole} cellName={(kpis as LeaderKpis)?.cellName} />
-                    : variant === 'zonal'
-                    ? <ZonalHeader activeRole={activeRole} />
-                    : <AdminHeader activeRole={activeRole} activeGroup={activeGroup} />
-            }
-        >
-            <Head title="Dashboard" />
-
-            <ViewOnlyBanner role={activeRole} />
-            {variant === 'officer' ? (
+            ) : variant === 'officer' ? (
                 <OfficerDashboard kpis={kpis as OfficerKpis} queue={queue as QueueRow[]} />
             ) : variant === 'team' ? (
                 <TeamDashboard kpis={kpis as TeamKpis} queue={queue as TeamQueueRow[]} activeRole={activeRole} />
             ) : variant === 'impactCell' ? (
                 <LeaderDashboard kpis={kpis as LeaderKpis} recentSubmissions={recentSubmissions ?? []} primaryCellId={primaryCellId} />
+            ) : variant === 'impactCellAdmin' ? (
+                <ImpactCellAdminDashboard
+                    kpis={kpis as ImpactCellAdminKpis}
+                    recentCrossCellSubs={recentCrossCellSubs ?? []}
+                    recentZonalSubs={recentZonalSubs ?? []}
+                    leadershipRollup={leadershipRollup ?? []}
+                />
             ) : variant === 'zonal' ? (
                 <ZonalDashboard kpis={kpis as ZonalKpis} cells={zonalCells ?? []} submissions={zonalSubmissions ?? []} />
-            ) : null}
-        </AuthenticatedLayout>
+            ) : (
+                <OfficerDashboard kpis={kpis as OfficerKpis} queue={queue as QueueRow[]} />
+            )}
+        </AdminDashboardLayout>
     );
 }
 
@@ -333,6 +386,22 @@ function ZonalHeader({ activeRole }: { activeRole: string | null }) {
             </h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                 Active role: <span className="font-mono">{activeRole ?? '—'}</span>
+            </p>
+        </div>
+    );
+}
+
+function ImpactCellAdminHeader({ activeRole }: { activeRole: string | null }) {
+    return (
+        <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                Impact Cell Administrator
+            </p>
+            <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+                Cross-cell &amp; cross-zonal overview
+            </h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Active role: <span className="font-mono">{activeRole ?? '—'}</span> · Supervisor scope: every primary cell + every zonal coordinator
             </p>
         </div>
     );
@@ -640,7 +709,24 @@ function LeaderDashboard({
 }) {
     return (
         <div className="space-y-8">
-            {primaryCellId && <LeadershipBoard cellId={primaryCellId} canView={true} />}
+            {primaryCellId && (
+                <section className="motion-safe:animate-fade-in space-y-3" data-testid="leader-board-section">
+                    <SectionHeader
+                        title="Your Leadership Tree"
+                        iconPath={usersIconPath}
+                        count={primaryCellId ?? '—'}
+                        action={
+                            <Link
+                                href={route('leadership.index')}
+                                className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                            >
+                                View all boards →
+                            </Link>
+                        }
+                    />
+                    <LeadershipBoard cellId={primaryCellId} canView={true} />
+                </section>
+            )}
 
             <section className="motion-safe:animate-fade-in">
                 <SectionHeader title="Cell Snapshot" iconPath={zapIconPath} />
@@ -884,6 +970,123 @@ function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: 
     );
 }
 
+/**
+ * Phase 09 — Impact Cell Administrator dashboard (cross-cell + cross-zonal supervisor).
+ *
+ * Re-uses the <LeadershipRollupWidget> the admin variant renders, plus two
+ * cross-group submission feeds (mixed-source for the whole impactCell group +
+ * a narrowed zonal-coordinator feed for separate audit visibility).
+ *
+ * Intentionally does NOT render the AdminDashboard's chart / KPI grid /
+ * SystemOverview / Recent Activity tiles — those assume Follow-Up officer and
+ * Guest data which is OUT of scope for a Phase 09 supervisor (only impactCell
+ * + zonal activities per the spec). Supervisor scope is narrower on purpose.
+ */
+function ImpactCellAdminDashboard({
+    kpis,
+    recentCrossCellSubs,
+    recentZonalSubs,
+    leadershipRollup,
+}: {
+    kpis: ImpactCellAdminKpis;
+    recentCrossCellSubs: ImpactCellAdminSubmission[];
+    recentZonalSubs: ImpactCellAdminSubmission[];
+    leadershipRollup: LeadershipRollupItem[];
+}) {
+    return (
+        <div className="space-y-8" data-testid="impact-cell-admin-dashboard-root">
+            {/* Phase 09 — 6 KPI cards mirroring the cross-cell + cross-zonal scope. */}
+            <section className="motion-safe:animate-fade-in" data-testid="impact-cell-admin-kpi-row">
+                <SectionHeader title="Supervisor Snapshot" iconPath={zapIconPath} />
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                    <KPICard accent="indigo"  caption="Primary Cells"       value={kpis.totalPrimaries}    trend="registered primaries" />
+                    <KPICard accent="emerald" caption="Sub-cells"           value={kpis.totalSubCells}     trend="across all primaries" />
+                    <KPICard accent="blue"    caption="Cell Group Users"    value={kpis.crossGroupUsers}   trend="leaders, admins, zonal" />
+                    <KPICard accent="amber"   caption="Zonal Coordinators"  value={kpis.zonalCoordinators} trend="across the system" />
+                    <KPICard accent="default" caption="Total Submissions"  value={kpis.totalSubmissions}  trend="all-time, cross-cell" />
+                    <KPICard accent="default" caption="This Week"           value={kpis.weekSubmissions}   trend="last 7 days" />
+                </div>
+            </section>
+
+            {/* Cross-cell leadership rollup — same widget the admin sees. */}
+            <LeadershipRollupWidget items={leadershipRollup} />
+
+            {/* Two-column cross-group feeds: mixed-source + zonal-narrowed.
+                Server-side filtered to GROUP_IMPACT_CELL authors; the zonal
+                feed narrows further to Impact_Zonal_Cordinator only. */}
+            <section className="motion-safe:animate-fade-in" data-testid="impact-cell-admin-feeds">
+                <SectionHeader title="Cross-Group Activity" iconPath={fileIconPath} />
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <CrossCellFeed
+                        title="All Cross-Cell Submissions"
+                        subtitle="Authors: any user whose role is in Impact Cell group"
+                        rows={recentCrossCellSubs}
+                    />
+                    <CrossCellFeed
+                        title="Zonal Coordinator Activity"
+                        subtitle="Authors: Impact_Zonal_Cordinator only"
+                        rows={recentZonalSubs}
+                        hideAuthorRole
+                    />
+                </div>
+            </section>
+        </div>
+    );
+}
+
+function CrossCellFeed({
+    title,
+    subtitle,
+    rows,
+    hideAuthorRole,
+}: {
+    title: string;
+    subtitle: string;
+    rows: ImpactCellAdminSubmission[];
+    hideAuthorRole?: boolean;
+}) {
+    return (
+        <PageCard>
+            <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
+            </div>
+            {rows.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No recent activity.
+                </div>
+            ) : (
+                <ul className="divide-y divide-gray-200 dark:divide-gray-700" data-testid={`cross-cell-feed-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+                    {rows.map((row) => (
+                        <li key={row.id} className="px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <Link
+                                        href={route('impact-submissions.show', row.id)}
+                                        className="text-sm font-medium text-gray-900 transition-colors hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400"
+                                    >
+                                        {submissionTypeLabels[row.type] ?? row.type}: {row.preview}
+                                    </Link>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {row.cellName ? <>Cell: <span className="font-medium">{row.cellName}</span> · </> : null}
+                                        {row.authorName ? <>by {row.authorName}</> : <>—</>}
+                                        {!hideAuthorRole && row.authorRole ? (
+                                            <> · <span className="font-mono text-[10px] text-gray-400">{row.authorRole}</span></>
+                                        ) : null}
+                                    </p>
+                                </div>
+                                <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                                    {row.createdAt?.slice(0, 10) ?? '—'}
+                                </span>
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </PageCard>
+    );
+}
+
 function QuickLinkCard({ href, label, iconPath }: { href: string; label: string; iconPath: React.ReactNode }) {
     return (
         <Link
@@ -968,6 +1171,7 @@ function AdminDashboard({
     systemOverview,
     recentActivity = [],
     recentRegistrations = [],
+    leadershipRollup = [],
 }: {
     kpis: AdminKpis;
     kpiDeltas?: Record<string, { value: number; positiveIsGood?: boolean }>;
@@ -981,6 +1185,7 @@ function AdminDashboard({
     systemOverview?: SystemOverviewStats;
     recentActivity?: RecentActivityTile[];
     recentRegistrations?: RegistrationItem[];
+    leadershipRollup?: LeadershipRollupItem[];
 }) {
     return (
         <div className="space-y-8" data-testid="admin-dashboard-root">
@@ -1097,6 +1302,12 @@ function AdminDashboard({
                 rangeLabels={rangeLabels ?? []}
                 chartSeries={chartSeries ?? {}}
             />
+
+            {/* Phase 08+ — Overall leadership tree rollup (one card per primary cell).
+                Sits between the chart panel and the system-health blocks so the
+                "narrative" order on the admin dashboard reads: numbers → trend →
+                cross-cell leadership surface → operational health. */}
+            <LeadershipRollupWidget items={leadershipRollup} />
 
             {/* Phase 06d.2 — System Overview + Recent Activity + Recent Registrations */}
             <SystemOverviewPanel

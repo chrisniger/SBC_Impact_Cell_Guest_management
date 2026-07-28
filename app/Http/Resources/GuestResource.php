@@ -47,6 +47,7 @@ class GuestResource extends JsonResource
             'marital_status' => $this->marital_status,
             'age'            => $this->age,
             'phone'          => $this->phone,
+            'email'          => $this->email,
             'address'        => $this->address,
 
             // Impact Cell group columns

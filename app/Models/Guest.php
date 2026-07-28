@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $marital_status
  * @property string|null $age                    // String per v2 schema
  * @property string|null $phone
+ * @property string|null $email
  * @property string|null $address
  * @property string|null $nearest_impact_cell_id
  * @property string|null $impact_status
@@ -58,6 +59,7 @@ class Guest extends Model
         'marital_status',
         'age',
         'phone',
+        'email',
         'address',
         'nearest_impact_cell_id',
         'impact_status',

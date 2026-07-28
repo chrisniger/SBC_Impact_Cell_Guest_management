@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
 import StatusPill from '@/Components/StatusPill';
 import { Head, Link } from '@inertiajs/react';
@@ -54,7 +54,7 @@ function StatusBadge({ value }: { value: string | null }) {
 
 export default function Index({ guests, canCreate, activeRole, groups }: GuestsPageProps) {
     return (
-        <AuthenticatedLayout
+        <AdminDashboardLayout
             header={
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
@@ -152,6 +152,6 @@ export default function Index({ guests, canCreate, activeRole, groups }: GuestsP
                     </div>
                 )}
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

@@ -81,6 +81,7 @@ class GuestRequest extends FormRequest
             'marital_status' => ['nullable', 'string', 'max:32'],
             'age'            => ['nullable', 'string', 'max:16'],   // String per v2 schema
             'phone'          => ['nullable', 'string', 'max:32'],
+            'email'          => ['nullable', 'string', 'email', 'max:255'],
             'address'        => ['nullable', 'string', 'max:255'],
 
             // Impact Cell group

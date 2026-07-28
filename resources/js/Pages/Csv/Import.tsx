@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import StatusPill from '@/Components/StatusPill';
 import { Head } from '@inertiajs/react';
 import { useRef, useState } from 'react';
@@ -43,7 +43,7 @@ export default function CsvImport() {
     };
 
     return (
-        <AuthenticatedLayout header={
+        <AdminDashboardLayout header={
             <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
                     Data
@@ -197,6 +197,6 @@ export default function CsvImport() {
                     </section>
                 )}
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

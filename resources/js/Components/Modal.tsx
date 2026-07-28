@@ -12,11 +12,19 @@ export default function Modal({
     maxWidth = '2xl',
     closeable = true,
     onClose = () => {},
+    dataTestId,
 }: PropsWithChildren<{
     show: boolean;
     maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
     closeable?: boolean;
     onClose: CallableFunction;
+    /**
+     * Pass-through for the rendered `<Dialog>` so callers can mount a
+     * stable testid without wrapping the contents. Forwarded onto the
+     * outer HeadlessUI Dialog; spacing/positioning classes are still
+     * owned by this component.
+     */
+    dataTestId?: string;
 }>) {
     const close = () => {
         if (closeable) {
@@ -37,6 +45,7 @@ export default function Modal({
             <Dialog
                 as="div"
                 id="modal"
+                data-testid={dataTestId}
                 className="fixed inset-0 z-50 flex transform items-center overflow-y-auto px-4 py-6 transition-all sm:px-0"
                 onClose={close}
             >

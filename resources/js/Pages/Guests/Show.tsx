@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import ContactsTimeline from '@/Components/ContactsTimeline';
 import StatusPill from '@/Components/StatusPill';
 import ViewOnlyBanner from '@/Components/ViewOnlyBanner';
@@ -16,6 +16,7 @@ interface GuestDetail {
     marital_status: string | null;
     age: string | null;
     phone: string | null;
+    email: string | null;
     address: string | null;
     nearest_impact_cell_id: string | null;
     impact_status: string | null;
@@ -109,7 +110,7 @@ export default function Show({ guest, editableFields, activeRole }: { guest: Gue
     const metaIcon = <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>;
 
     return (
-        <AuthenticatedLayout
+        <AdminDashboardLayout
             header={
                 <div className="flex items-center justify-between gap-4">
                     <div>
@@ -159,6 +160,7 @@ export default function Show({ guest, editableFields, activeRole }: { guest: Gue
                             <DisplayField label="Marital status" value={guest.marital_status} />
                             <DisplayField label="Age" value={guest.age} />
                             <DisplayField label="Phone" value={guest.phone} mono />
+                            <DisplayField label="Email" value={guest.email} mono />
                             <div className="mt-2 border-t border-gray-100 pt-2 dark:border-gray-700">
                                 <div className="flex items-baseline justify-between py-1">
                                     <dt className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Address</dt>
@@ -239,6 +241,6 @@ export default function Show({ guest, editableFields, activeRole }: { guest: Gue
                     </dl>
                 </Card>
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

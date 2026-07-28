@@ -6,7 +6,7 @@ use App\Models\ImpactCell;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+use Inertia\Response;
 
 /**
  * Impact Cell CRUD.
@@ -31,7 +31,7 @@ class ImpactCellController extends Controller
      * Currently redirects to dashboard (Phase 03 ships the data layer; Phase 04
      * ships the Inertia UI).
      */
-    public function index(Request $request): SymfonyResponse
+    public function index(Request $request): Response
     {
         $request->validate(['hierarchy' => ['nullable', 'boolean']]);
 
@@ -47,7 +47,7 @@ class ImpactCellController extends Controller
      * GET /impact-cells/{id} — single cell with subCells.
      * Currently renders a minimal Inertia stub; Phase 04 will flesh out the UI.
      */
-    public function show(string $id): SymfonyResponse
+    public function show(string $id): Response
     {
         $cell = ImpactCell::with(['subCells' => fn ($q) => $q->orderBy('name')])
             ->findOrFail($id);

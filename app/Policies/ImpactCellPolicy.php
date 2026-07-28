@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\ImpactCell;
 use App\Models\User;
+use App\Support\RoleHelper;
 
 /**
  * Impact Cell policy — Phase 03 follow-up (per HANDOFF.md § 8 #7 +
@@ -34,19 +35,30 @@ class ImpactCellPolicy
         return true;
     }
 
-    /** Create — Administrator only. */
+    /**
+     * Phase 09 — Create: Administrator OR Impact_Cell_Admin (cross-cell supervisor).
+     * Spec: Impact_Cell_Admin acts as "the administrator for impact cell,
+     * and zonal cordinators" — managing the hierarchy is in scope.
+     */
     public function create(User $user): bool
     {
-        return $user->activeRole() === 'Administrator';
+        $role = $user->activeRole();
+        return $role === 'Administrator' || RoleHelper::isImpactCellAdmin($role);
     }
 
-    /** Update — Administrator only. */
+    /** Phase 09 — Update: same gate as create(). */
     public function update(User $user, ImpactCell $cell): bool
     {
-        return $user->activeRole() === 'Administrator';
+        $role = $user->activeRole();
+        return $role === 'Administrator' || RoleHelper::isImpactCellAdmin($role);
     }
 
-    /** Delete — Administrator only. */
+    /**
+     * Phase 09 — Delete: Administrator ONLY.
+     * Cell deletion teardown touches global system state (sub-cell cascades,
+     * leadership tree recompute, submission history) — a blast radius we keep
+     * behind the top-level admin role.
+     */
     public function delete(User $user, ImpactCell $cell): bool
     {
         return $user->activeRole() === 'Administrator';

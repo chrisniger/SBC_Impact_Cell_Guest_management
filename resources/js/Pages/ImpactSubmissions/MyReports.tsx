@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
 import StatusPill from '@/Components/StatusPill';
 import { Head, Link } from '@inertiajs/react';
@@ -40,7 +40,7 @@ const fileIconPath = <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 
 
 export default function MyReports({ reports, activeRole }: { reports: { data: ReportRow[] }; activeRole: string | null }) {
     return (
-        <AuthenticatedLayout
+        <AdminDashboardLayout
             header={
                 <div className="flex items-center justify-between gap-4">
                     <div>
@@ -104,6 +104,6 @@ export default function MyReports({ reports, activeRole }: { reports: { data: Re
                     </div>
                 </div>
             )}
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

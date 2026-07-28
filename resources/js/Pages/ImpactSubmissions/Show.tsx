@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import StatusPill from '@/Components/StatusPill';
 import { Head, Link } from '@inertiajs/react';
 
@@ -34,7 +34,7 @@ export default function Show({ submission }: { submission: Submission }) {
     const subjectName = submission.data?.full_name ?? submission.data?.child_name ?? submission.data?.name ?? submission.id.slice(0, 8);
 
     return (
-        <AuthenticatedLayout header={
+        <AdminDashboardLayout header={
             <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
                     Submission
@@ -140,6 +140,6 @@ export default function Show({ submission }: { submission: Submission }) {
                     </div>
                 </section>
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }

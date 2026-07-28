@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import { Head, router, usePage } from '@inertiajs/react';
 import { FormEventHandler, ReactNode, useState } from 'react';
 
@@ -25,7 +25,7 @@ export default function Create() {
     const { type, cells, activeRole } = props;
 
     return (
-        <AuthenticatedLayout header={
+        <AdminDashboardLayout header={
             <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
                     Outreach
@@ -74,7 +74,7 @@ export default function Create() {
                     </div>
                 </div>
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }
 

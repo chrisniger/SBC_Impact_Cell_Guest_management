@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import KPICard from '@/Components/KPICard';
 import { Head, Link, router } from '@inertiajs/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
@@ -31,7 +31,7 @@ export default function ReportsIndex({ kpis, byStatus, byEvent, byFollowUp, byJo
     const joinWhenChartData = byJoinWhen.map(r => ({ name: r.join_when ?? '(empty)', value: r.cnt }));
 
     return (
-        <AuthenticatedLayout header={
+        <AdminDashboardLayout header={
             <div className="flex items-center justify-between gap-4">
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
@@ -188,7 +188,7 @@ export default function ReportsIndex({ kpis, byStatus, byEvent, byFollowUp, byJo
                     </section>
                 )}
             </div>
-        </AuthenticatedLayout>
+        </AdminDashboardLayout>
     );
 }
 

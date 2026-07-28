@@ -6,6 +6,7 @@ use App\Models\Guest;
 use App\Support\CsvColumns;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -68,10 +69,29 @@ class CsvImportController extends Controller
                 continue;
             }
 
+            $email = trim($row[$columnMap['email']] ?? '');
+
+            // Phase 10b — email format validation. Mirrors the `email` rule in
+            // GuestRequest byte-for-byte via Laravel's Validator facade (NOT
+            // PHP's `filter_var(FILTER_VALIDATE_EMAIL)`, which is RFC 822 and
+            // accepts trailing dots like `foo@bar.com.` — Laravel's default
+            // `email` rule uses Egulias/RFC 5321 which rejects them). Skip
+            // the row (counted + surfaced via $skipDetails) instead of erroring
+            // the entire batch — consistent with the existing phone-presence +
+            // duplicate-phone handling above.
+            if ($email !== '' && Validator::make(
+                ['email' => $email],
+                ['email' => ['nullable', 'string', 'email', 'max:255']],
+            )->fails()) {
+                $skipped++;
+                $skipDetails[] = "Row " . ($rowIndex + 2) . ": invalid email format";
+                continue;
+            }
+
             $data = [
                 'guest_name' => trim($row[$columnMap['guest_name']] ?? ''),
                 'phone'      => $phone,
-                'email'      => trim($row[$columnMap['email']] ?? ''),
+                'email'      => $email,
                 'event'      => trim($row[$columnMap['event']] ?? ''),
                 'source'     => trim($row[$columnMap['source']] ?? ''),
             ];

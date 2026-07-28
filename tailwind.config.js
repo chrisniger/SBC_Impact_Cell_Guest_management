@@ -21,6 +21,27 @@ export default {
                 sans: ['Figtree', ...defaultTheme.fontFamily.sans],
             },
             // ----------------------------------------------------------------
+            // Phase 06d.2 + 06e — brand palette tokens.
+            //
+            // AdminSidebar references `bg-brand-red`, `bg-brand-red-soft`,
+            // `text-brand-red` directly; without these keys Tailwind emits
+            // those class names verbatim as CSS class names that don't exist,
+            // and the active-state highlight silently fell back to default
+            // (no red bar). Centralising the palette here means future role
+            // dashboards inherit the same chrome without re-duplicating hex
+            // values in every component.
+            //
+            // Mapping:  brand-red       → rose-600  (primary brand)
+            //           brand-red-soft  → rose-50   (active-state wash)
+            //           brand-purple-soft → indigo-50 (kpi-card wash)
+            // ----------------------------------------------------------------
+            colors: {
+                brand: {
+                    red:        '#e11d48', // rose-600
+                    'red-soft': '#fff1f2', // rose-50
+                },
+            },
+            // ----------------------------------------------------------------
             // Phase 06b — design tokens.
             // Source of truth: Implementation/Phase_06b-06c_UI_Polish.md §1 + §2.1.
             //
