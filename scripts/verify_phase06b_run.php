@@ -22,11 +22,11 @@
  *  [15]  EmptyState.tsx uses the 'shadow-card' class
  *  [16]  EmptyState.tsx uses 'motion-safe:animate-fade-in'
  *  [17]  EmptyState.tsx preserves data-testid="empty-state"
- *  [18]  AuthenticatedLayout.tsx uses the 'shadow-card' class on the dropdown trigger
- *  [19]  AuthenticatedLayout.tsx uses 'hover:shadow-card-hover' on the dropdown trigger
- *  [20]  AuthenticatedLayout.tsx <main> uses 'motion-safe:animate-fade-in'
- *  [21]  AuthenticatedLayout.tsx no longer contains hardcoded 'shadow-[0_4px_20px_rgba'
- *  [22]  AuthenticatedLayout.tsx no longer contains an inline @keyframes fadeIn block
+ *  [18]  AdminDashboardLayout.tsx page header band uses 'motion-safe:animate-fade-in' (06b polish token migrated from AuthenticatedLayout)
+ *  [19]  AdminDashboardLayout.tsx uses 'motion-safe:animate-fade-in' on >= 3 page-layer wrappers
+ *  [20]  AdminDashboardLayout.tsx <main> uses 'motion-safe:animate-fade-in'
+ *  [21]  AdminDashboardLayout.tsx no longer contains hardcoded 'shadow-[0_4px_20px_rgba'
+ *  [22]  AdminDashboardLayout.tsx no longer contains an inline @keyframes fadeIn block
  *  [23]  GuestLayout.tsx still has its inline @keyframes fadeIn copy (06c safety net)
  *
  * Logic-free assertions: file_get_contents() + strpos / simple substring checks.
@@ -71,7 +71,22 @@ $appCss      = must_read($root . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_S
 $kpi         = must_read($root . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'Components' . DIRECTORY_SEPARATOR . 'KPICard.tsx');
 $pill        = must_read($root . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'Components' . DIRECTORY_SEPARATOR . 'StatusPill.tsx');
 $empty       = must_read($root . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'Components' . DIRECTORY_SEPARATOR . 'EmptyState.tsx');
-$layout      = must_read($root . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'Layouts' . DIRECTORY_SEPARATOR . 'AuthenticatedLayout.tsx');
+// Phase 06d consolidation: AuthenticatedLayout.tsx was retired — admin chrome
+// moved to AdminDashboardLayout.tsx (unified layout wrapper across all roles
+// + mobile-responsiveness + a11y polish). fail-soft read pattern mirrors the
+// GuestLayout read below so a missing/renamed layout file surfaces as clean
+// verifier FAILs on [18]-[22] rather than a fatal `must_read` exception that
+// aborts the suite mid-run. Targeted token assertions on [18]-[22] trace
+// AdminDashboardLayout's actual polish tokens (motion-safe:animate-fade-in on
+// >= 3 page-layer wrappers; no hardcoded shadow leakage; no inline <style>
+// keyframes). bootstrap count from grep:
+//   motion-safe:animate-fade-in  = 3 (header-band + main + footer backdrop class)
+//   admin-header-band            = 1 testid on page header band
+//   admin-main-content           = 1 testid on <main>
+//   shadow-card / hover:shadow-  = 0 (dropdowns migrated to ThemeToggle/LanguageSwitcher child components)
+//   <style                       = 0 (inline keyframes dropped 06c)
+$layoutPath = $root . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'Layouts' . DIRECTORY_SEPARATOR . 'AdminDashboardLayout.tsx';
+$layout     = is_file($layoutPath) ? (string) file_get_contents($layoutPath) : '';
 // Phase 06b reviewer Item 3: read GuestLayout.tsx fail-soft so a missing/
 // renamed file surfaces as a clean [23] FAIL rather than a fatal exception
 // mid-run that prevents the rest of the verifier + downstream suite from
@@ -189,28 +204,43 @@ check(17, 'EmptyState.tsx preserves data-testid="empty-state"',
     has($empty, 'data-testid="empty-state"') !== -1,
     $missing('data-testid="empty-state"'));
 
-// --- AuthenticatedLayout.tsx -------------------------------------------------
-check(18, 'AuthenticatedLayout.tsx uses shadow-card (dropdown trigger)',
-    has($layout, 'shadow-card') !== -1,
-    $missing('shadow-card'));
+// --- AdminDashboardLayout.tsx (Phase 06d consolidation; was AuthenticatedLayout) ---
+// Phase 06d removed the AuthenticatedLayout dropdown-trigger chrome — the
+// layout no longer owns dropdowns (ThemeToggle / LanguageSwitcher / RoleBadge
+// own them as child components imported via the top of AdminDashboardLayout).
+// The layout's primary polish tokens now live on page-layer chrome
+// (header-band + main + backdrop), using `motion-safe:animate-fade-in`
+// consistently. [18]-[20] trace that token across layer elements; [21]-[22]
+// remain negative-assertion regression guards (no hardcoded shadow utilities,
+// no inline <style> keyframes block).
+check(18, 'AdminDashboardLayout.tsx page header band uses motion-safe:animate-fade-in (06b polish token migrated from AuthenticatedLayout)',
+    has($layout, 'motion-safe:animate-fade-in') !== -1
+        && has($layout, 'admin-header-band') !== -1,
+    $missing('admin-header-band ... motion-safe:animate-fade-in'));
 
-check(19, 'AuthenticatedLayout.tsx uses hover:shadow-card-hover (dropdown trigger)',
-    has($layout, 'hover:shadow-card-hover') !== -1,
-    $missing('hover:shadow-card-hover'));
+check(19, 'AdminDashboardLayout.tsx uses motion-safe:animate-fade-in on >= 3 AND <= 6 page-layer wrappers (header-band + main + backdrop adopted from 06b polish; bounded range flags both drop and proliferation regressions)',
+    substr_count($layout, 'motion-safe:animate-fade-in') >= 3
+        && substr_count($layout, 'motion-safe:animate-fade-in') <= 6
+        && substr_count($layout, 'admin-header-band') >= 1
+        && substr_count($layout, 'admin-main-content') >= 1,
+    $missing('3-6 motion-safe:animate-fade-in + admin-header-band + admin-main-content design token adoption (closed range flags both drop + proliferation regressions)'));
 
-check(20, 'AuthenticatedLayout.tsx <main> uses motion-safe:animate-fade-in',
+check(20, 'AdminDashboardLayout.tsx <main> uses motion-safe:animate-fade-in',
     has($layout, '<main') !== -1
-        && has($layout, 'motion-safe:animate-fade-in') !== -1,
-    $missing('<main ... motion-safe:animate-fade-in'));
+        && has($layout, 'motion-safe:animate-fade-in') !== -1
+        && has($layout, 'admin-main-content') !== -1,
+    $missing('<main ... motion-safe:animate-fade-in admin-main-content wrapper'));
 
-check(21, 'AuthenticatedLayout.tsx has NO hardcoded shadow-[0_4px_20px_rgba utility',
+check(21, 'AdminDashboardLayout.tsx has NO hardcoded shadow-[0_4px_20px_rgba utility',
     has($layout, 'shadow-[0_4px_20px_rgba') === -1,
     'still references hardcoded shadow utility');
 
-// [22] — the explanatory comment in AuthenticatedLayout legitimately
-// references the literal text "@keyframes fadeIn"; the verifier must look
-// for the actual <style>...</style> BLOCK, not just the substring.
-check(22, 'AuthenticatedLayout.tsx has NO inline <style>...</style> block',
+// [22] — AdminDashboardLayout.tsx has no explanatory `@keyframes fadeIn`
+// comment block (that was a quirk of the old AuthenticatedLayout). The
+// negative assertion on the loose substring `<style` is therefore enough
+// to flag any future regression: a re-introduction of inline-styles would
+// only happen as a deliberate Phase-N regression.
+check(22, 'AdminDashboardLayout.tsx has NO inline <style>...</style> block',
     strpos($layout, '<style') === false,
     'still contains an opening <style> tag (inline @keyframes block)');
 

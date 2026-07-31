@@ -16,6 +16,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $parent_cell_id
  * @property bool        $is_primary
  * @property int         $order
+ * @property string|null $leader_name               Free-text per Phase 13 leader-board UX decision.
+ * @property string|null $leader_phone
+ * @property string|null $assistant_name
+ * @property string|null $assistant_phone
+ * @property string|null $welfare_officer_name
+ * @property string|null $welfare_officer_phone
+ *
+ * @property-read \Illuminate\Database\Eloquent\Collection<int,User> $leaderUsers
+ *                                                        Users whose impact_cell_id points at this cell
+ *                                                        (computed via the inverse of User::assignedImpactCell()).
  */
 class ImpactCell extends Model
 {
@@ -29,6 +39,14 @@ class ImpactCell extends Model
         'parent_cell_id',
         'is_primary',
         'order',
+        // Phase 13 — free-text leadership team seeded at signup or by
+        // admin via the inline edit on the Show page.
+        'leader_name',
+        'leader_phone',
+        'assistant_name',
+        'assistant_phone',
+        'welfare_officer_name',
+        'welfare_officer_phone',
     ];
 
     protected $casts = [
@@ -53,6 +71,17 @@ class ImpactCell extends Model
     public function subCells(): HasMany
     {
         return $this->hasMany(self::class, 'parent_cell_id');
+    }
+
+    /**
+     * Phase 13 — inverse of `User::assignedImpactCell()`.
+     * Returns the users (most often a single Impact_Leaders) whose
+     * `impact_cell_id` points at this cell. Used by Show page
+     * "Assigned leader" badge + future leadership-board roster.
+     */
+    public function leaderUsers(): HasMany
+    {
+        return $this->hasMany(User::class, 'impact_cell_id');
     }
 
     // ─────────────────────────────────────────────────────────────────────

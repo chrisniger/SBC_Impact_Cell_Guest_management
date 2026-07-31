@@ -79,16 +79,21 @@ check(2, 'AdminDashboardLayout.tsx: sidebar testid (layout-owned) + GlobalSearch
     && str_contains($layoutText, '<LanguageSwitcher '),
     'missing layout shell testid or GlobalSearch/LanguageSwitcher imports/usages (note: layout may import GlobalSearch as `import GlobalSearch, { SearchResult } from ...` — assert the path substring to handle both shapes)');
 
-check(3, 'AdminSidebar.tsx: 13 nav entries + collapse toggle + brand logo block',
+check(3, 'AdminSidebar.tsx: ≥13 nav items + pair (routeName: AND iconPath:) per item + collapse toggle + brand logo block (Phase 13 iconPath refactor → named ICON_* consts)',
     $sidebarText !== ''
-    && substr_count($sidebarText, "iconPath: <") >= 13
+    && substr_count($sidebarText, 'routeName:') >= 13
+    && substr_count($sidebarText, 'iconPath:') >= 13
+    && substr_count($sidebarText, 'href:') >= 13
     && str_contains($sidebarText, 'admin-sidebar-collapse-toggle')
     && str_contains($sidebarText, 'Summit Bible'),
-    'expected 13 nav entries + collapse toggle + Summit Bible logo block');
+    'expected ≥13 items with paired (routeName: AND iconPath: AND href:) + collapse toggle + Summit Bible brand block. The paired check ensures each item still owns its 3 required fields (iconShape extracted to ICON_* consts but the field is present).');
 
-check(4, 'AdminSidebarNavItem.tsx: active 3px left bar + hover transition',
-    $navItemText !== '' && str_contains($navItemText, 'w-[3px]') && str_contains($navItemText, 'active ?'),
-    'missing active-bar or hover-state branching');
+check(4, 'AdminSidebarNavItem.tsx: active 3px left bar + active ternary (inline OR multi-line both pass)',
+    $navItemText !== ''
+    && str_contains($navItemText, 'w-[3px]')
+    && preg_match('/active\s*\?/', $navItemText) === 1,
+    'missing active-bar or active ternary (multi-line-safe regex: `active ?` may be split across lines after Phase 06e visual polish)');
+
 
 // ─────────────────────────────────────────────────────────────────────────
 // New 06d.0 primitives.
@@ -133,40 +138,49 @@ check(8, 'KPICard.tsx: extends with series + sparkTone + animateValue props + Sp
     'missing series/animateValue props or Sparkline render guard');
 
 // ─────────────────────────────────────────────────────────────────────────
-// 5 stub pages.
+// 5 stub pages — Phase 13 contracted Users from a stub page into a full
+// functional CRUD page (search/add/role-switch/pagination). Submissions
+// remains a functional redirect stub. RolesPermissions / Messages /
+// Analytics are still canonical 'Coming soon' placeholders.
+//
+// The old 'Back to Dashboard' common invariant was a placeholder-only
+// pattern — the functional Users page (and its sibling functional pages)
+// do not have it, and the surviving placeholders no longer either. Loop
+// classifies per kind and asserts kind-specific contract.
 // ─────────────────────────────────────────────────────────────────────────
-// Submissions stub is FUNCTIONAL (links to existing /impact-submissions.index
-// route) — different acceptance criteria from the others (which are
-// pure "Coming soon" placeholders).
 $stubPages = [
-    'resources/js/Pages/Admin/Users/Index.tsx'              => 'admin-users-stub',
-    'resources/js/Pages/Admin/RolesPermissions/Index.tsx'   => 'admin-roles-permissions-stub',
-    'resources/js/Pages/Admin/Messages/Index.tsx'           => 'admin-messages-stub',
-    'resources/js/Pages/Admin/Analytics/Index.tsx'          => 'admin-analytics-stub',
-    'resources/js/Pages/Admin/Submissions/Index.tsx'        => 'admin-submissions-stub',
+    // [file => [testid, kind, kind-specific assertion literal]]
+    'resources/js/Pages/Admin/Users/Index.tsx'              => ['admin-users-stub',           'functional-crud',     'users-table'],
+    'resources/js/Pages/Admin/RolesPermissions/Index.tsx'   => ['admin-roles-permissions-stub', 'placeholder',      'Coming soon'],
+    'resources/js/Pages/Admin/Messages/Index.tsx'           => ['admin-messages-stub',        'placeholder',         'Coming soon'],
+    'resources/js/Pages/Admin/Analytics/Index.tsx'          => ['admin-analytics-stub',       'placeholder',         'Coming soon'],
+    'resources/js/Pages/Admin/Submissions/Index.tsx'        => ['admin-submissions-stub',     'functional-redirect', 'impact-submissions.index'],
 ];
-$placeholderPages = ['Users', 'RolesPermissions', 'Messages', 'Analytics']; // canonical 'Coming soon' pages
 $stubIdx = 9;
-foreach ($stubPages as $file => $testid) {
+foreach ($stubPages as $file => [$testid, $kind, $kindLiteral]) {
     $text = read($file);
-    $baseName = basename(dirname($file)); // 'Submissions', 'Users', 'RolesPermissions', 'Messages', 'Analytics'
-    if (in_array($baseName, $placeholderPages, true)) {
-        // Pure placeholder: assert 'Coming soon' literal.
-        $labelSuffix = 'placeholder + back link';
-        $ok = str_contains($text, 'Coming soon');
-        $failMsgHint = ' or Coming soon placeholder';
+    $hasTestid      = $text !== '' && str_contains($text, "data-testid=\"{$testid}\"");
+    $hasKindLiteral = str_contains($text, $kindLiteral);
+    if ($kind === 'functional-crud') {
+        // Functional page (Users): the kindLiteral IS the discriminator testid
+        // (e.g. 'users-table'). Users no longer carries the legacy
+        // 'admin-users-stub' testid after Phase 13 promotion to full CRUD —
+        // we assert the kind-discriminator instead so the verifier tracks
+        // the actual functional contract, not the placeholder ancestry.
+        check($stubIdx, "Stub Page (functional CRUD): {$file} has '{$kindLiteral}' discriminator testid",
+            $text !== '' && $hasKindLiteral,
+            "missing '{$kindLiteral}' testid on full CRUD page");
+    } elseif ($kind === 'placeholder') {
+        // Pure placeholder: assert page testid + 'Coming soon' literal.
+        check($stubIdx, "Stub Page (placeholder): {$file} has '{$testid}' testid + 'Coming soon' literal",
+            $hasTestid && $hasKindLiteral,
+            "missing {$testid} testid OR 'Coming soon' literal on placeholder page");
     } else {
-        // Functional stub (Submissions): assert it links to the canonical list.
-        $labelSuffix = 'functional redirect link';
-        $ok = str_contains($text, 'Open submissions list') || str_contains($text, 'impact-submissions.index');
-        $failMsgHint = ' or Open submissions list link';
+        // Functional redirect stub (Submissions): assert page testid + canonical list link.
+        check($stubIdx, "Stub Page (functional redirect): {$file} has '{$testid}' testid + link to '{$kindLiteral}'",
+            $hasTestid && $hasKindLiteral,
+            "missing {$testid} testid OR '{$kindLiteral}' link on redirect stub");
     }
-    check($stubIdx, "Stub Page: {$file} has '{$testid}' testid + back link + {$labelSuffix}",
-        $text !== ''
-        && str_contains($text, "data-testid=\"{$testid}\"")
-        && str_contains($text, 'Back to Dashboard')
-        && $ok,
-        'missing stub testid, back-link,' . $failMsgHint);
     $stubIdx++;
 }
 
@@ -227,12 +241,12 @@ check(17, 'Dashboard.tsx: AdminDashboard uses Greeting + 7-card row + new KPICar
     && str_contains($dashboardText, 'animateValue={true}'),
     'expected Greeting + ≥7 KPICards with animateValue={true}');
 
-check(18, 'Dashboard.tsx: parent returns AdminDashboardLayout wrapping AdminDashboard for variant=admin',
+check(18, 'Dashboard.tsx: structural invariant — variant===\'admin\' gate + AdminDashboard sub-component ref + AdminDashboardLayout wrapper all present (Phase 06d architecture)',
     $dashboardText !== ''
-    && str_contains($dashboardText, "if (variant === 'admin')")
-    && str_contains($dashboardText, '<AdminDashboardLayout')
-    && preg_match('/if \(variant === \'admin\'\) \{[\s\S]*?<AdminDashboardLayout/', $dashboardText) === 1,
-    'missing early-return-for-admin branch wrapping AdminDashboardLayout');
+    && str_contains($dashboardText, "variant === 'admin'")          // the gate
+    && str_contains($dashboardText, '<AdminDashboard')              // the sub-component called inside the gate
+    && str_contains($dashboardText, '<AdminDashboardLayout'),        // the wrapper that hosts the rendered output
+    'expected variant===\'admin\' gate + <AdminDashboard sub-component call + <AdminDashboardLayout wrapper (Phase 06d architecture refactor: variant ternary no longer returns layout directly — it returns the sub-component, which itself renders inside the layout. Old format `if (variant===\'admin\') { return <AdminDashboardLayout>... }` is gone — verifier tracks the structural invariant instead of a specific if-block shape.)');
 
 // ─────────────────────────────────────────────────────────────────────────
 // Risk-mitigation spot-check on Sparkline + AnimatedCounter (re-shape).

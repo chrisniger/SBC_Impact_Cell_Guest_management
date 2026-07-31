@@ -28,13 +28,20 @@ use Illuminate\Validation\ValidationException;
  *
  * Validation surface
  * ------------------
- *   - name:          required string
- *   - email:         required, unique (excluding self + trashed rows so
- *                    a later re-creation with the same email doesn't trip)
- *   - roles[]:       non-empty array, each ∈ RoleHelper::ROLE_NAMES
- *   - active_role:   must be in the chosen roles array (a select bound
- *                    to `roles` cannot point at a role not held)
- *   - password:      required + confirmed on create; nullable + confirmed on update
+ *   - name:           required string
+ *   - email:          required, unique (excluding self + trashed rows so
+ *                     a later re-creation with the same email doesn't trip)
+ *   - roles[]:        non-empty array, each ∈ RoleHelper::ROLE_NAMES
+ *   - active_role:    must be in the chosen roles array (a select bound
+ *                     to `roles` cannot point at a role not held)
+ *   - password:       required + confirmed on create; nullable + confirmed on update
+ *   - impact_cell_id: nullable UUID FK to impact_cells.id (Phase 13 — assigned
+ *                     cell for Impact_Leaders). Only validated as a 'required
+ *                     uuid exists' pair; the "must be set when Impact_Leaders
+ *                     is in roles[]" semantic is enforced in
+ *                     `Admin\UserController::store/update` after rules pass so
+ *                     a friendly 422 with errors.impact_cell_id can be raised
+ *                     without confusing the `exists` validator.
  */
 class AdminUserRequest extends FormRequest
 {
@@ -86,6 +93,10 @@ class AdminUserRequest extends FormRequest
                 'string',
                 Rule::in($this->input('roles', [])),
             ],
+            // Phase 13 — assigned cell. Always optional here; the
+            // controller enforces "must be set if Impact_Leaders is in roles"
+            // so the Inertia form can render errors.impact_cell_id inline.
+            'impact_cell_id'    => ['nullable', 'string', 'uuid', Rule::exists('impact_cells', 'id')],
         ];
 
         // Password is mandatory on create, optional on edit (blank = keep

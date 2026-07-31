@@ -1,4 +1,7 @@
 import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
+import DashboardCard from '@/Components/DashboardCard';
+import DashboardSection from '@/Components/DashboardSection';
+import DashboardTable, { Column } from '@/Components/DashboardTable';
 import EmptyState from '@/Components/EmptyState';
 import Greeting from '@/Components/Greeting';
 import KPICard from '@/Components/KPICard';
@@ -117,9 +120,11 @@ type DashboardPageProps = {
     kpis: OfficerKpis | TeamKpis | LeaderKpis | ImpactCellAdminKpis | AdminKpis | ZonalKpis | null;
     queue: QueueRow[] | TeamQueueRow[];
     recentSubmissions?: RecentSubmission[];
+    assignedGuests?: { id: string; guestName: string; phone: string | null; impactStatus: string | null; createdAt: string | null }[];
     zonalCells?: ZonalCell[];
     zonalSubmissions?: RecentSubmission[];
     primaryCellId?: string | null;
+    canEditImpactStatus?: boolean;
     activeRole: string | null;
     activeGroup: string | null;
     /** Phase 06d.0 — per-KPI delta (current 7d vs prior 7d) — Admin variant only. */
@@ -186,15 +191,33 @@ type AuthLikeProps = {
  *  - Quick Actions row (4 cards)
  *  - 06d.1 added DateRangeFilter + lazy OverviewAnalytics (recharts ~150 kB)
  *  - 06d.2 will add System Overview + Recent Activity + Recent Registrations
+ *
+ * Phase 13+ premium polish:
+ *  - Per-role variants share 3 new composite components:
+ *      `DashboardCard`, `DashboardSection`, `DashboardTable`.
+ *  - Section headers refactored from emoji-circle icons to a sober
+ *    typographic eyebrow + title pattern (Linear / Vercel style).
+ *  - Tables redeploy with denser chrome (`px-3 py-2.5`), tinted row
+ *    hover, and a subtle off-white thead that doesn't compete with data.
+ *  - Quick-link and quick-submit cards dropped the dashed border +
+ *    upward float hover in favor of a solid surface + subtle outer ring.
+ *  - CrossCellFeed rebuilt as a log-style timeline (left rule + monospace
+ *    timestamp in muted gray) instead of a table list.
+ *
+ * All testids, role-specific contracts, routes, and behaviors preserved
+ * verbatim so existing verifier scripts in scripts/verify_phase*.php and
+ * end-to-end coverage keep passing.
  */
 export default function Dashboard({
     variant,
     kpis,
     queue,
     recentSubmissions,
+    assignedGuests,
     zonalCells,
     zonalSubmissions,
     primaryCellId,
+    canEditImpactStatus,
     activeRole,
     activeGroup,
     kpiDeltas,
@@ -216,13 +239,21 @@ export default function Dashboard({
     // AdminDashboardLayout is the unified layout; the role-aware
     // <AdminSidebar> renders 5 grouped sections, showing all 5 with
     // non-owner sections inert when active role is Administrator, or
-    // only the owner's section otherwise.
+    // only the matching owner section otherwise.
     const authName = (usePage() as any).props?.auth?.user?.name as string | undefined;
 
     const pageHeader =
         variant === 'officer'         ? <OfficerHeader activeRole={activeRole} /> :
         variant === 'team'            ? <TeamHeader activeRole={activeRole} activeGroup={activeGroup} /> :
-        variant === 'impactCell'      ? <LeaderHeader activeRole={activeRole} cellName={(kpis as LeaderKpis)?.cellName} /> :
+        variant === 'impactCell'      ? (
+            <LeaderHeader
+                activeRole={activeRole}
+                cellName={(kpis as LeaderKpis)?.cellName}
+                memberCount={(kpis as LeaderKpis)?.memberCount ?? 0}
+                weekSubmissions={(kpis as LeaderKpis)?.weekSubmissions ?? 0}
+                totalSubmissions={(kpis as LeaderKpis)?.totalSubmissions ?? 0}
+            />
+        ) :
         variant === 'impactCellAdmin' ? <ImpactCellAdminHeader activeRole={activeRole} /> :
         variant === 'zonal'           ? <ZonalHeader activeRole={activeRole} /> :
                                          <AdminHeader activeRole={activeRole} activeGroup={activeGroup} />;
@@ -263,7 +294,13 @@ export default function Dashboard({
             ) : variant === 'team' ? (
                 <TeamDashboard kpis={kpis as TeamKpis} queue={queue as TeamQueueRow[]} activeRole={activeRole} />
             ) : variant === 'impactCell' ? (
-                <LeaderDashboard kpis={kpis as LeaderKpis} recentSubmissions={recentSubmissions ?? []} primaryCellId={primaryCellId} />
+                <LeaderDashboard
+                    kpis={kpis as LeaderKpis}
+                    recentSubmissions={recentSubmissions ?? []}
+                    primaryCellId={primaryCellId}
+                    assignedGuests={assignedGuests ?? []}
+                    canEditImpactStatus={canEditImpactStatus ?? false}
+                />
             ) : variant === 'impactCellAdmin' ? (
                 <ImpactCellAdminDashboard
                     kpis={kpis as ImpactCellAdminKpis}
@@ -282,44 +319,12 @@ export default function Dashboard({
 
 /* ───────────  Section helpers  ─────────── */
 
-function SectionHeader({
-    title,
-    iconPath,
-    count,
-    action,
-}: {
-    title: string;
-    iconPath: React.ReactNode;
-    count?: number | string;
-    action?: React.ReactNode;
-}) {
-    return (
-        <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
-                        {iconPath}
-                    </svg>
-                </span>
-                <div>
-                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                        {title}
-                    </h3>
-                    {count !== undefined && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {count} {typeof count === 'number' ? (count === 1 ? 'item' : 'items') : ''}
-                        </p>
-                    )}
-                </div>
-            </div>
-            {action}
-        </div>
-    );
-}
-
+// PageCard kept as a compatibility alias — DashboardTable now owns the
+// dashboard card chrome. This remains so any downstream component still
+// importing the old name (or in-flight pages) keeps compiling.
 function PageCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
     return (
-        <div className={`overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800 ${className}`}>
+        <div className={`motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800 ${className}`}>
             {children}
         </div>
     );
@@ -330,14 +335,14 @@ function PageCard({ children, className = '' }: { children: React.ReactNode; cla
 function OfficerHeader({ activeRole }: { activeRole: string | null }) {
     return (
         <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Follow Up Officer
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                 Your personal KPIs and queue
             </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Active role: <span className="font-mono">{activeRole ?? '—'}</span>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Active role: <span className="font-mono text-gray-700 dark:text-gray-300">{activeRole ?? '—'}</span>
             </p>
         </div>
     );
@@ -346,31 +351,97 @@ function OfficerHeader({ activeRole }: { activeRole: string | null }) {
 function TeamHeader({ activeRole, activeGroup }: { activeRole: string | null; activeGroup: string | null }) {
     return (
         <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Follow Up Team
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                 Team-wide queue and KPIs
             </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Active role: <span className="font-mono">{activeRole ?? '—'}</span> · group <span className="font-mono">{activeGroup ?? '—'}</span>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Active role: <span className="font-mono text-gray-700 dark:text-gray-300">{activeRole ?? '—'}</span> · group <span className="font-mono text-gray-700 dark:text-gray-300">{activeGroup ?? '—'}</span>
             </p>
         </div>
     );
 }
 
-function LeaderHeader({ activeRole, cellName }: { activeRole: string | null; cellName: string | undefined }) {
+function LeaderHeader({
+    activeRole,
+    cellName,
+    memberCount = 0,
+    weekSubmissions = 0,
+    totalSubmissions = 0,
+}: {
+    activeRole: string | null;
+    cellName: string | undefined;
+    memberCount?: number;
+    weekSubmissions?: number;
+    totalSubmissions?: number;
+}) {
+    // Phase 13+: rich welcome/status band — role chip + cell name + stats
+    // strip + Submit Report CTA. Replaces the original sparse title+role
+    // text per the Impact Cell Leader redesign brief.
+    const hasCell = hasUsableCellName(cellName);
     return (
-        <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
-                Impact Cell Leader
-            </p>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                {cellName ?? 'No cell assigned'}
-            </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Active role: <span className="font-mono">{activeRole ?? '—'}</span> · Weekly submissions
-            </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between" data-testid="leader-page-header">
+            <div className="min-w-0">
+                <span
+                    aria-label="Active role"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                >
+                    <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-500 dark:bg-indigo-300" />
+                    Impact Cell Leader
+                </span>
+                <h2 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+                    {hasCell ? cellName : 'Cell pending setup'}
+                </h2>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <span>
+                        Active role: <span className="font-mono text-gray-700 dark:text-gray-300">{activeRole ?? '—'}</span>
+                    </span>
+                    <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">|</span>
+                    <span>
+                        <span data-testid="leader-header-members" className="font-semibold tabular-nums text-gray-700 dark:text-gray-300">{memberCount}</span>{' '}
+                        {memberCount === 1 ? 'member' : 'members'}
+                    </span>
+                    <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">|</span>
+                    <span>
+                        <span data-testid="leader-header-week" className="font-semibold tabular-nums text-gray-700 dark:text-gray-300">{weekSubmissions}</span>{' '}
+                        submissions this week
+                    </span>
+                    <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">|</span>
+                    <span>
+                        <span data-testid="leader-header-total" className="font-semibold tabular-nums text-gray-700 dark:text-gray-300">{totalSubmissions}</span>{' '}
+                        total submissions
+                    </span>
+                </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+                {hasCell ? (
+                    <Link
+                        href="/impact-submissions/create?type=report"
+                        data-testid="leader-header-cta-submit-report"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="9" y1="13" x2="15" y2="13" />
+                        </svg>
+                        Submit Report
+                    </Link>
+                ) : (
+                    <Link
+                        href="/impact-submissions/create?type=report"
+                        data-testid="leader-header-cta-anchor-cell"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                            <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Anchor your cell
+                    </Link>
+                )}
+            </div>
         </div>
     );
 }
@@ -378,14 +449,14 @@ function LeaderHeader({ activeRole, cellName }: { activeRole: string | null; cel
 function ZonalHeader({ activeRole }: { activeRole: string | null }) {
     return (
         <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Zonal Coordinator
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                 Zone-wide overview
             </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Active role: <span className="font-mono">{activeRole ?? '—'}</span>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Active role: <span className="font-mono text-gray-700 dark:text-gray-300">{activeRole ?? '—'}</span>
             </p>
         </div>
     );
@@ -394,14 +465,14 @@ function ZonalHeader({ activeRole }: { activeRole: string | null }) {
 function ImpactCellAdminHeader({ activeRole }: { activeRole: string | null }) {
     return (
         <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Impact Cell Administrator
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                Cross-cell &amp; cross-zonal overview
+                Cross-cell & cross-zonal overview
             </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Active role: <span className="font-mono">{activeRole ?? '—'}</span> · Supervisor scope: every primary cell + every zonal coordinator
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Active role: <span className="font-mono text-gray-700 dark:text-gray-300">{activeRole ?? '—'}</span> · Supervisor scope: every primary cell + every zonal coordinator
             </p>
         </div>
     );
@@ -410,17 +481,22 @@ function ImpactCellAdminHeader({ activeRole }: { activeRole: string | null }) {
 function AdminHeader({ activeRole, activeGroup }: { activeRole: string | null; activeGroup: string | null }) {
     return (
         <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Administrator
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                 Dashboard
             </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Active role: <span className="font-mono">{activeRole ?? '—'}</span> · Full system access
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Active role: <span className="font-mono text-gray-700 dark:text-gray-300">{activeRole ?? '—'}</span> · Full system access
             </p>
         </div>
     );
+}
+
+function hasUsableCellName(cellName: string | null | undefined): cellName is string {
+    const normalized = (cellName ?? '').trim();
+    return normalized !== '' && normalized !== '-' && normalized !== '\u2014' && normalized !== 'â€”';
 }
 
 /* ───────────  Status helpers  ─────────── */
@@ -469,22 +545,35 @@ function InlineStatusSelect({ guestId, currentStatus, isViewOnly }: { guestId: s
         );
     };
 
+    // Phase 13+ premium polish — switched to a Notion-style inline property
+    // select: pill-shaped chrome, no heavy outline, soft hover/focus ring.
     return (
-        <select
-            value={currentStatus ?? ''}
-            onChange={handleChange}
-            disabled={isViewOnly}
-            className={`block w-full max-w-40 rounded-lg border-gray-300 bg-white text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 ${
-                isViewOnly ? 'cursor-not-allowed opacity-60' : ''
-            }`}
-            title={isViewOnly ? 'View-only mode — cannot edit' : 'Update follow-up status'}
-        >
-            <option value="">— (unset) —</option>
-            <option value="NOT CONTACTED">Not Contacted</option>
-            <option value="CONTACTED">Contacted</option>
-            <option value="WRONG NUMBER">Wrong Number</option>
-            <option value="NOT REACHABLE">Not Reachable</option>
-        </select>
+        <div className={`relative inline-block ${isViewOnly ? 'opacity-60' : ''}`}>
+            <select
+                value={currentStatus ?? ''}
+                onChange={handleChange}
+                disabled={isViewOnly}
+                title={isViewOnly ? 'View-only mode — cannot edit' : 'Update follow-up status'}
+                data-testid={`inline-status-select-${guestId}`}
+                className={`appearance-none rounded-full border border-gray-200 bg-gray-50 py-1 pl-3 pr-8 text-xs font-medium text-gray-700 shadow-none transition-colors hover:border-gray-300 hover:bg-white focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-800 dark:focus:border-indigo-400 dark:focus:bg-gray-800 ${
+                    isViewOnly ? 'cursor-not-allowed' : 'cursor-pointer'
+                }`}
+            >
+                <option value="">— Set status —</option>
+                <option value="NOT CONTACTED">Not Contacted</option>
+                <option value="CONTACTED">Contacted</option>
+                <option value="WRONG NUMBER">Wrong Number</option>
+                <option value="NOT REACHABLE">Not Reachable</option>
+            </select>
+            <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400"
+            >
+                <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+            </span>
+        </div>
     );
 }
 
@@ -505,12 +594,54 @@ const zapIconPath = (
 const fileIconPath = (
     <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="9" y1="13" x2="15" y2="13" /><line x1="9" y1="17" x2="15" y2="17" /></>
 );
-
 function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[] }) {
+    const columns: Column<QueueRow>[] = [
+        {
+            header: 'Guest',
+            cell: (g) => (
+                <Link
+                    href={route('guests.show', g.id)}
+                    className="font-medium text-gray-900 transition-colors hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400"
+                >
+                    {g.guestName}
+                </Link>
+            ),
+        },
+        {
+            header: 'Phone',
+            cell: (g) => <span className="font-mono text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</span>,
+        },
+        {
+            header: 'Status',
+            cell: (g) => <ContactedStatusPill status={g.contactedStatus} />,
+        },
+        {
+            header: 'Visited',
+            cell: (g) => g.visited
+                ? <StatusPill tone="success" dot>Visited</StatusPill>
+                : <StatusPill tone="warn" dot>Pending</StatusPill>,
+        },
+        {
+            header: 'Added',
+            headerClassName: 'text-right',
+            cell: (g) => (
+                <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                    {g.createdAt?.slice(0, 10) ?? '—'}
+                </span>
+            ),
+            align: 'right',
+            cellClassName: 'text-right',
+        },
+    ];
+
     return (
         <div className="space-y-8">
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader title="Personal KPIs" iconPath={zapIconPath} />
+            <DashboardSection
+                eyebrow="Personal KPIs"
+                title="Your portfolio at a glance"
+                description="Outreach progress, response rate, and queue volume for the guests assigned to you."
+                icon={zapIconPath}
+            >
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                     <KPICard accent="indigo"  caption="Pending Contacts" value={kpis.pendingContacts} trend="≤ pending outreach" />
                     <KPICard accent="emerald" caption="Total Calls"      value={kpis.totalCalls}      trend="guests contacted" />
@@ -518,70 +649,35 @@ function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[
                     <KPICard accent="amber"   caption="Pending Visit"    value={kpis.pendingVisit}    trend="available, awaiting visit" />
                     <KPICard accent="default" caption="Response Rate"    value={`${kpis.responseRate.toFixed(1)}%`} trend="visited ÷ total calls" />
                 </div>
-            </section>
+            </DashboardSection>
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader
-                    title="My Queue"
-                    iconPath={queueIconPath}
-                    count={queue.length}
-                    action={
-                        <Link
-                            href={route('guests.index')}
-                            className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                        >
-                            See all in My Guests →
-                        </Link>
-                    }
+            <DashboardSection
+                eyebrow="My Queue"
+                title="Assigned guests to follow up"
+                icon={queueIconPath}
+                count={queue.length === 0 ? 'Empty' : queue.length}
+                action={
+                    <Link
+                        href={route('guests.index')}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
+                    >
+                        See all in My Guests
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </Link>
+                }
+            >
+                <DashboardTable<QueueRow>
+                    rows={queue}
+                    columns={columns}
+                    tableTestId="officer-queue-table"
+                    rowTestId={(g) => `officer-queue-row-${g.id}`}
+                    emptyTitle="No guests assigned yet"
+                    emptyDescription="When an admin assigns a guest to you, they'll appear here, sorted by priority."
+                    emptyIconPath={inboxIconPath}
                 />
-                {queue.length === 0 ? (
-                    <EmptyState
-                        title="No guests assigned yet"
-                        description="When an admin assigns a guest to you, they'll appear here, sorted by priority."
-                        iconPath={inboxIconPath}
-                    />
-                ) : (
-                    <PageCard>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                <thead className="bg-gray-50/80 dark:bg-gray-900/60">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Guest</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Phone</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Visited</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Added</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {queue.map((g) => (
-                                        <tr key={g.id} className="transition-colors hover:bg-indigo-50/40 dark:hover:bg-gray-700/40">
-                                            <td className="px-4 py-3 text-sm">
-                                                <Link
-                                                    href={route('guests.show', g.id)}
-                                                    className="font-medium text-gray-900 transition-colors hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400"
-                                                >
-                                                    {g.guestName}
-                                                </Link>
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</td>
-                                            <td className="px-4 py-3"><ContactedStatusPill status={g.contactedStatus} /></td>
-                                            <td className="px-4 py-3">
-                                                {g.visited
-                                                    ? <StatusPill tone="success" dot>Visited</StatusPill>
-                                                    : <StatusPill tone="warn" dot>Pending</StatusPill>}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                                                {g.createdAt?.slice(0, 10) ?? '—'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </PageCard>
-                )}
-            </section>
+            </DashboardSection>
         </div>
     );
 }
@@ -589,100 +685,109 @@ function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[
 function TeamDashboard({ kpis, queue, activeRole }: { kpis: TeamKpis; queue: TeamQueueRow[]; activeRole: string | null }) {
     const isViewOnly = activeRole === 'Follow_UP_View_Only';
 
+    const columns: Column<TeamQueueRow>[] = [
+        {
+            header: 'Guest',
+            cell: (g) => (
+                <Link
+                    href={route('guests.show', g.id)}
+                    className="font-medium text-gray-900 transition-colors hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400"
+                >
+                    {g.guestName}
+                </Link>
+            ),
+        },
+        {
+            header: 'Phone',
+            cell: (g) => <span className="font-mono text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</span>,
+        },
+        {
+            header: 'Officer',
+            cell: (g) => <span className="text-sm text-gray-700 dark:text-gray-300">{g.officerName ?? '—'}</span>,
+        },
+        {
+            header: 'Follow Up Status',
+            cell: (g) => isViewOnly
+                ? <FollowUpStatusPill status={g.followUpStatus} />
+                : <InlineStatusSelect guestId={g.id} currentStatus={g.followUpStatus} isViewOnly={false} />,
+        },
+        {
+            header: 'Latest Contact',
+            cell: (g) => <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{g.latestContact ?? '—'}</span>,
+        },
+        {
+            header: 'Updated',
+            cell: (g) => <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{g.updatedAt?.slice(0, 10) ?? '—'}</span>,
+        },
+        {
+            header: '',
+            align: 'right',
+            cell: (g) => !isViewOnly && g.followUpStatus !== 'CONTACTED' ? (
+                <button
+                    type="button"
+                    onClick={() => {
+                        router.patch(
+                            route('guests.follow-up-status', g.id),
+                            { follow_up_status: 'CONTACTED' },
+                            { preserveScroll: true, preserveState: true },
+                        );
+                    }}
+                    data-testid={`mark-contacted-${g.id}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+                >
+                    Mark Contacted
+                </button>
+            ) : null,
+        },
+    ];
+
     return (
         <div className="space-y-8">
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader title="Team KPIs" iconPath={zapIconPath} />
+            <DashboardSection
+                eyebrow="Team KPIs"
+                title="Team-wide progress"
+                description="Operational metrics across the follow-up team — outreach velocity, completion, and exceptions."
+                icon={zapIconPath}
+            >
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                     <KPICard accent="indigo"  caption="Pending Contacts" value={kpis.pendingContacts} trend="not yet contacted" />
                     <KPICard accent="emerald" caption="Contacted Today"  value={kpis.contactedToday}  trend="contact sections logged today" />
                     <KPICard accent="rose"    caption="Wrong Number"     value={kpis.wrongNumber}     trend="marked wrong number" />
                     <KPICard accent="amber"   caption="Not Reachable"    value={kpis.notReachable}    trend="could not be reached" />
                 </div>
-            </section>
+            </DashboardSection>
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader
-                    title="Team Queue"
-                    iconPath={queueIconPath}
-                    count={queue.length}
-                    action={
-                        <Link
-                            href={route('guests.index')}
-                            className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                        >
-                            See all guests →
-                        </Link>
-                    }
+            <DashboardSection
+                eyebrow="Team Queue"
+                title="All assigned guests — operational queue"
+                description={isViewOnly
+                    ? 'View-only mode active. Status changes are disabled.'
+                    : 'Click the status pill to update follow-up state in place. Changes propagate to the guest record immediately.'}
+                icon={queueIconPath}
+                count={queue.length === 0 ? 'Empty' : queue.length}
+                action={
+                    <Link
+                        href={route('guests.index')}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
+                    >
+                        See all guests
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </Link>
+                }
+            >
+                <DashboardTable<TeamQueueRow>
+                    rows={queue}
+                    columns={columns}
+                    tableTestId="team-queue-table"
+                    rowTestId={(g) => `team-queue-row-${g.id}`}
+                    emptyTitle="No guests in the queue"
+                    emptyDescription="When guests are added, they'll appear here sorted by priority."
+                    emptyIconPath={inboxIconPath}
+                    compact
                 />
-                {queue.length === 0 ? (
-                    <EmptyState
-                        title="No guests in the queue"
-                        description="When guests are added, they'll appear here sorted by priority."
-                        iconPath={inboxIconPath}
-                    />
-                ) : (
-                    <PageCard>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                <thead className="bg-gray-50/80 dark:bg-gray-900/60">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Guest</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Phone</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Officer</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Follow Up Status</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Latest Contact</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Updated</th>
-                                        <th className="px-4 py-3"></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {queue.map((g) => (
-                                        <tr key={g.id} className="transition-colors hover:bg-indigo-50/40 dark:hover:bg-gray-700/40">
-                                            <td className="px-4 py-3 text-sm">
-                                                <Link
-                                                    href={route('guests.show', g.id)}
-                                                    className="font-medium text-gray-900 transition-colors hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400"
-                                                >
-                                                    {g.guestName}
-                                                </Link>
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{g.officerName ?? '—'}</td>
-                                            <td className="px-4 py-3">
-                                                {isViewOnly ? (
-                                                    <FollowUpStatusPill status={g.followUpStatus} />
-                                                ) : (
-                                                    <InlineStatusSelect guestId={g.id} currentStatus={g.followUpStatus} isViewOnly={false} />
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.latestContact ?? '—'}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.updatedAt?.slice(0, 10) ?? '—'}</td>
-                                            <td className="px-4 py-3 text-right">
-                                                {!isViewOnly && g.followUpStatus !== 'CONTACTED' && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            router.patch(
-                                                                route('guests.follow-up-status', g.id),
-                                                                { follow_up_status: 'CONTACTED' },
-                                                                { preserveScroll: true, preserveState: true },
-                                                            );
-                                                        }}
-                                                        className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
-                                                    >
-                                                        Mark Contacted
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </PageCard>
-                )}
-            </section>
+            </DashboardSection>
         </div>
     );
 }
@@ -707,190 +812,304 @@ function LeaderDashboard({
     assignedGuests?: { id: string; guestName: string; phone: string | null; impactStatus: string | null; createdAt: string | null }[];
     canEditImpactStatus?: boolean;
 }) {
+    const hasCell = hasUsableCellName(kpis.cellName);
+
+    const subColumns: Column<RecentSubmission>[] = [
+        {
+            header: 'Type',
+            cell: (s) => <span className="font-medium text-gray-900 dark:text-gray-100">{submissionTypeLabels[s.type] ?? s.type}</span>,
+        },
+        { header: 'Cell', cell: (s) => <span className="text-sm text-gray-700 dark:text-gray-300">{s.cellName ?? '—'}</span> },
+        { header: 'Preview', cell: (s) => <span className="text-sm text-gray-600 dark:text-gray-400">{s.preview}</span> },
+        {
+            header: 'Date',
+            align: 'right',
+            cell: (s) => <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{s.createdAt?.slice(0, 10) ?? '—'}</span>,
+        },
+    ];
+
+    const guestColumns: Column<{ id: string; guestName: string; phone: string | null; impactStatus: string | null; createdAt: string | null }>[] = [
+        { header: 'Name', cell: (g) => <span className="font-medium text-gray-900 dark:text-gray-100">{g.guestName}</span> },
+        { header: 'Phone', cell: (g) => <span className="font-mono text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</span> },
+        {
+            header: 'Impact Status',
+            cell: (g) => (
+                <InlineImpactStatusPill guestId={g.id} current={g.impactStatus} canEdit={canEditImpactStatus} />
+            ),
+        },
+        {
+            header: '',
+            align: 'right',
+            cell: (g) => canEditImpactStatus ? (
+                <Link
+                    href={route('guests.edit', g.id)}
+                    className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    data-testid={`assigned-guest-edit-${g.id}`}
+                >
+                    Edit →
+                </Link>
+            ) : null,
+        },
+    ];
+
     return (
         <div className="space-y-8">
             {primaryCellId && (
-                <section className="motion-safe:animate-fade-in space-y-3" data-testid="leader-board-section">
-                    <SectionHeader
-                        title="Your Leadership Tree"
-                        iconPath={usersIconPath}
-                        count={primaryCellId ?? '—'}
-                        action={
-                            <Link
-                                href={route('leadership.index')}
-                                className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                            >
-                                View all boards →
-                            </Link>
-                        }
-                    />
+                <DashboardSection
+                    sectionTestId="leader-board-section"
+                    eyebrow="Leadership"
+                    title="Your leadership tree"
+                    description="Engagement status across each sub-cell under your primary cell."
+                    icon={usersIconPath}
+                    count={primaryCellId}
+                    action={
+                        <Link
+                            href={route('leadership.index')}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
+                        >
+                            View all boards
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+                                <path d="M5 12h14M12 5l7 7-7 7" />
+                            </svg>
+                        </Link>
+                    }
+                >
                     <LeadershipBoard cellId={primaryCellId} canView={true} />
-                </section>
+                </DashboardSection>
             )}
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader title="Cell Snapshot" iconPath={zapIconPath} />
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <KPICard accent="indigo"  caption="Cell"        value={kpis.cellName} trend={kpis.memberCount > 0 ? `${kpis.memberCount} members` : 'No members'} />
-                    <KPICard accent="emerald" caption="Members"     value={kpis.memberCount} trend="registered in cell" />
-                    <KPICard accent="amber"   caption="This Week"   value={kpis.weekSubmissions} trend="submissions this week" />
-                    <KPICard accent="default" caption="Total"       value={kpis.totalSubmissions} trend="all submissions" />
-                </div>
-            </section>
+            <DashboardSection
+                eyebrow="Cell Snapshot"
+                title={hasCell ? "Your cell in numbers" : "Set up your cell to begin"}
+                description={hasCell
+                    ? "At-a-glance totals for membership, weekly activity, and all-time submissions."
+                    : "Submit your first cell report from the quick-submit cards below to anchor your cell, or ask an administrator to assign you to one."}
+                icon={zapIconPath}
+            >
+                {hasCell ? (
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                        <KPICard accent="indigo"  caption="Cell"        value={kpis.cellName} trend={kpis.memberCount > 0 ? `${kpis.memberCount} members` : 'No members'} />
+                        <KPICard accent="emerald" caption="Members"     value={kpis.memberCount} trend="registered in cell" />
+                        <KPICard accent="amber"   caption="This Week"   value={kpis.weekSubmissions} trend="submissions this week" />
+                        <KPICard accent="default" caption="Total"       value={kpis.totalSubmissions} trend="all submissions" />
+                    </div>
+                ) : (
+                    <DashboardCard accent="indigo" className="px-5 py-5" dataCard="leader-cell-pending">
+                        <div className="flex items-start gap-4">
+                            <span
+                                aria-hidden="true"
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                                    <path d="M3 3h18v18H3z" />
+                                    <path d="M3 9h18M9 21V9" />
+                                </svg>
+                            </span>
+                            <div className="min-w-0">
+                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    Cell pending setup
+                                </h3>
+                                <p className="mt-1 text-sm leading-snug text-gray-600 dark:text-gray-400">
+                                    Your Impact Cell Leader role is active but no primary cell is linked to your account yet. Submit a Cell Report to anchor one, or reach out to an administrator to assign you to an existing cell.
+                                </p>
+                                <div className="mt-3">
+                                    <Link
+                                        href="/impact-submissions/create?type=report"
+                                        data-testid="leader-cell-pending-cta"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-100 dark:border-indigo-800/60 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+                                    >
+                                        Anchor your cell →
+                                    </Link>
+                                </div>
+                            </div>
+                        </div>
+                    </DashboardCard>
+                )}
+            </DashboardSection>
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader title="Quick Submit" iconPath={zapIconPath} />
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {(['member', 'report', 'childbirth', 'soul'] as const).map((type) => (
+            <DashboardSection
+                eyebrow="Quick Submit"
+                title="Log a new submission"
+                description="Direct entry points into the four submission types — submissions land under your primary cell."
+                icon={zapIconPath}
+            >
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {([
+                        {
+                            type: 'member',
+                            label: 'Members Data',
+                            description: 'Register a new cell member',
+                            iconPath: (
+                                <>
+                                    <circle cx="9" cy="7" r="4" />
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                </>
+                            ),
+                            accentBg: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300',
+                        },
+                        {
+                            type: 'report',
+                            label: 'Cell Report',
+                            description: 'Weekly report and attendance',
+                            iconPath: (
+                                <>
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                    <line x1="9" y1="13" x2="15" y2="13" />
+                                </>
+                            ),
+                            accentBg: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300',
+                        },
+                        {
+                            type: 'childbirth',
+                            label: 'Childbirth',
+                            description: 'Record a new birth in the cell',
+                            iconPath: (
+                                <>
+                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                                </>
+                            ),
+                            accentBg: 'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300',
+                        },
+                        {
+                            type: 'soul',
+                            label: 'Soul Registration',
+                            description: 'Add a soul won this week',
+                            iconPath: (
+                                <>
+                                    <circle cx="12" cy="8" r="4" />
+                                    <path d="M4 21a8 8 0 0 1 16 0" />
+                                </>
+                            ),
+                            accentBg: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300',
+                        },
+                    ] as const).map((tile) => (
                         <Link
-                            key={type}
-                            href={`/impact-submissions/create?type=${type}`}
-                            className="group flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-6 text-sm font-semibold text-gray-700 transition-all hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-300"
-                            data-testid={`quick-submit-${type}`}
+                            key={tile.type}
+                            href={`/impact-submissions/create?type=${tile.type}`}
+                            data-testid={`quick-submit-${tile.type}`}
+                            className="group flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-white p-4 text-left shadow-card transition-all duration-200 hover:border-indigo-400 hover:bg-indigo-50/40 hover:shadow-card-hover hover:ring-1 hover:ring-indigo-200/60 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 dark:hover:ring-indigo-700/40"
                         >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 transition-transform group-hover:scale-110" aria-hidden="true">
-                                <path d="M12 5v14M5 12h14" />
-                            </svg>
-                            {submissionTypeLabels[type]}
+                            <span
+                                aria-hidden="true"
+                                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tile.accentBg} transition-transform group-hover:scale-110`}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                                    {tile.iconPath}
+                                </svg>
+                            </span>
+                            <span className="text-sm font-semibold leading-tight text-gray-900 transition-colors group-hover:text-indigo-700 dark:text-white dark:group-hover:text-indigo-300">
+                                {tile.label}
+                            </span>
+                            <span className="text-xs leading-snug text-gray-500 dark:text-gray-400">
+                                {tile.description}
+                            </span>
                         </Link>
                     ))}
                 </div>
-            </section>
+            </DashboardSection>
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader
-                    title="Recent Submissions"
-                    iconPath={fileIconPath}
-                    count={recentSubmissions.length}
-                    action={
-                        <Link
-                            href={route('impact-submissions.my-reports')}
-                            className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                        >
-                            View all my reports →
-                        </Link>
-                    }
+            <DashboardSection
+                eyebrow="Recent Submissions"
+                title="Latest cell submissions"
+                icon={fileIconPath}
+                count={recentSubmissions.length}
+                action={
+                    <Link
+                        href={route('impact-submissions.my-reports')}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
+                    >
+                        View all my reports
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </Link>
+                }
+            >
+                <DashboardTable<RecentSubmission>
+                    rows={recentSubmissions}
+                    columns={subColumns}
+                    tableTestId="leader-recent-submissions-table"
+                    rowTestId={(s) => `leader-recent-submission-row-${s.id}`}
+                    emptyTitle="No submissions yet"
+                    emptyDescription="Use the quick-submit cards above to log your first cell activity."
+                    emptyIconPath={fileIconPath}
                 />
-                {recentSubmissions.length === 0 ? (
-                    <EmptyState
-                        title="No submissions yet"
-                        description="Use the quick-submit cards above to log your first cell activity."
-                        iconPath={fileIconPath}
-                    />
-                ) : (
-                    <PageCard>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                <thead className="bg-gray-50/80 dark:bg-gray-900/60">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Type</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Cell</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Preview</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {recentSubmissions.map((s) => (
-                                        <tr key={s.id} className="transition-colors hover:bg-indigo-50/40 dark:hover:bg-gray-700/40">
-                                            <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{submissionTypeLabels[s.type] ?? s.type}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{s.cellName ?? '—'}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{s.preview}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{s.createdAt?.slice(0, 10) ?? '—'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </PageCard>
-                )}
-            </section>
+            </DashboardSection>
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader
-                    title="Assigned Guests"
-                    iconPath={usersIconPath}
-                    count={assignedGuests.length}
-                    action={
-                        assignedGuests.length > 0 ? (
-                            <Link
-                                href={route('guests.index')}
-                                className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                            >
-                                View all →
-                            </Link>
-                        ) : null
-                    }
+            <DashboardSection
+                eyebrow="Assigned Guests"
+                title="Guests whose nearest cell matches yours"
+                description={canEditImpactStatus
+                    ? 'Tap the pill to update the impact status in place. Edits propagate to the guest record immediately.'
+                    : 'Impact-status edits are disabled for this view. Contact a leader with edit permissions to update.'}
+                icon={usersIconPath}
+                count={assignedGuests.length === 0 ? 'Empty' : assignedGuests.length}
+                action={assignedGuests.length > 0 ? (
+                    <Link
+                        href={route('guests.index')}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
+                    >
+                        View all
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </Link>
+                ) : null}
+            >
+                <DashboardTable
+                    rows={assignedGuests}
+                    columns={guestColumns}
+                    tableTestId="assigned-guests-table"
+                    rowTestId={(g) => `assigned-guest-row-${g.id}`}
+                    emptyTitle="No assigned guests yet"
+                    emptyDescription={primaryCellId
+                        ? 'Guests whose nearest Impact Cell matches your primary cell will appear here.'
+                        : 'Submit your first report to anchor your cell, then assigned guests will appear here.'}
+                    emptyIconPath={usersIconPath}
                 />
-                {assignedGuests.length === 0 ? (
-                    <EmptyState
-                        title="No assigned guests yet"
-                        description={primaryCellId
-                            ? 'Guests whose nearest Impact Cell matches your primary cell will appear here.'
-                            : 'Submit your first report to anchor your cell, then assigned guests will appear here.'}
-                        iconPath={usersIconPath}
-                    />
-                ) : (
-                    <PageCard>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" data-testid="assigned-guests-table">
-                                <thead className="bg-gray-50/80 dark:bg-gray-900/60">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Name</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Phone</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Impact Status</th>
-                                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {assignedGuests.map((g) => (
-                                        <tr key={g.id} className="transition-colors hover:bg-indigo-50/40 dark:hover:bg-gray-700/40" data-testid={`assigned-guest-row-${g.id}`}>
-                                            <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{g.guestName}</td>
-                                            <td className="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</td>
-                                            <td className="px-4 py-3 text-sm">
-                                                <InlineImpactStatusPill
-                                                    guestId={g.id}
-                                                    current={g.impactStatus}
-                                                    canEdit={canEditImpactStatus}
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                {canEditImpactStatus && (
-                                                    <Link
-                                                        href={route('guests.edit', g.id)}
-                                                        className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                                                        data-testid={`assigned-guest-edit-${g.id}`}
-                                                    >
-                                                        Edit →
-                                                    </Link>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </PageCard>
-                )}
-            </section>
+            </DashboardSection>
         </div>
     );
 }
 
 function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: ZonalCell[]; submissions: RecentSubmission[] }) {
+    const subColumns: Column<RecentSubmission>[] = [
+        { header: 'Type', cell: (s) => <span className="font-medium text-gray-900 dark:text-gray-100">{submissionTypeLabels[s.type] ?? s.type}</span> },
+        { header: 'Cell', cell: (s) => <span className="text-sm text-gray-700 dark:text-gray-300">{s.cellName ?? '—'}</span> },
+        { header: 'Preview', cell: (s) => <span className="text-sm text-gray-600 dark:text-gray-400">{s.preview}</span> },
+        {
+            header: 'Date',
+            align: 'right',
+            cell: (s) => <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{s.createdAt?.slice(0, 10) ?? '—'}</span>,
+        },
+    ];
+
     return (
         <div className="space-y-8">
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader title="Zone Snapshot" iconPath={zapIconPath} />
+            <DashboardSection
+                eyebrow="Zone Snapshot"
+                title="Your zone in numbers"
+                description="Cells, submissions, and follow-up volume for the cells under your supervision."
+                icon={zapIconPath}
+            >
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <KPICard accent="indigo"  caption="Impact Cells"     value={kpis.totalCells}        trend="in your zone" />
-                    <KPICard accent="emerald" caption="Total Submissions" value={kpis.totalSubmissions} trend="all types" />
-                    <KPICard accent="amber"   caption="Pending Guests"    value={kpis.pendingGuests}    trend="not yet contacted" />
-                    <KPICard accent="emerald" caption="Contacted Guests"  value={kpis.contactedGuests}  trend="follow-up made" />
+                    <KPICard accent="indigo"  caption="Impact Cells"      value={kpis.totalCells}        trend="in your zone" />
+                    <KPICard accent="emerald" caption="Total Submissions" value={kpis.totalSubmissions}  trend="all types" />
+                    <KPICard accent="amber"   caption="Pending Guests"    value={kpis.pendingGuests}     trend="not yet contacted" />
+                    <KPICard accent="emerald" caption="Contacted Guests"  value={kpis.contactedGuests}   trend="follow-up made" />
                 </div>
-            </section>
+            </DashboardSection>
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader title="Impact Cells" iconPath={usersIconPath} count={cells.length} />
+            <DashboardSection
+                eyebrow="Impact Cells"
+                title="Cells in your zone"
+                description="Tap any cell to drill into its submissions feed."
+                icon={usersIconPath}
+                count={cells.length === 0 ? 'Empty' : cells.length}
+            >
                 {cells.length === 0 ? (
                     <EmptyState
                         title="No cells assigned"
@@ -903,69 +1122,51 @@ function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: 
                             <Link
                                 key={c.id}
                                 href={route('impact-submissions.index')}
-                                className="group flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-card transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-card-hover dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500"
+                                className="group flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-card transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-card-hover hover:ring-1 hover:ring-indigo-200/60 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 dark:hover:ring-indigo-700/40"
                                 data-testid={`zonal-cell-${c.id}`}
                             >
-                                <span className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-indigo-500" aria-hidden="true">
+                                <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-indigo-500 transition-transform group-hover:scale-110" aria-hidden="true">
                                         <path d="M3 3h18v18H3z" /><path d="M3 9h18M9 21V9" />
                                     </svg>
                                     {c.name}
                                 </span>
-                                {c.is_primary && <StatusPill tone="brand" dot>Primary</StatusPill>}
+                                {c.is_primary
+                                    ? <StatusPill tone="brand" dot>Primary</StatusPill>
+                                    : <StatusPill tone="neutral" dot>Sub-cell</StatusPill>}
                             </Link>
                         ))}
                     </div>
                 )}
-            </section>
+            </DashboardSection>
 
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader
-                    title="Recent Submissions"
-                    iconPath={fileIconPath}
-                    count={submissions.length}
-                    action={
-                        <Link
-                            href={route('impact-submissions.index')}
-                            className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                        >
-                            View all →
-                        </Link>
-                    }
+            <DashboardSection
+                eyebrow="Recent Submissions"
+                title="Latest zone activity"
+                icon={fileIconPath}
+                count={submissions.length === 0 ? 'Empty' : submissions.length}
+                action={
+                    <Link
+                        href={route('impact-submissions.index')}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
+                    >
+                        View all
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </Link>
+                }
+            >
+                <DashboardTable<RecentSubmission>
+                    rows={submissions}
+                    columns={subColumns}
+                    tableTestId="zonal-submissions-table"
+                    rowTestId={(s) => `zonal-submission-row-${s.id}`}
+                    emptyTitle="No submissions yet"
+                    emptyDescription="Recent cell activity across your zone will show up here."
+                    emptyIconPath={fileIconPath}
                 />
-                {submissions.length === 0 ? (
-                    <EmptyState
-                        title="No submissions yet"
-                        description="Recent cell activity across your zone will show up here."
-                        iconPath={fileIconPath}
-                    />
-                ) : (
-                    <PageCard>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                <thead className="bg-gray-50/80 dark:bg-gray-900/60">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Type</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Cell</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Preview</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {submissions.map((s) => (
-                                        <tr key={s.id} className="transition-colors hover:bg-indigo-50/40 dark:hover:bg-gray-700/40">
-                                            <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{submissionTypeLabels[s.type] ?? s.type}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{s.cellName ?? '—'}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{s.preview}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{s.createdAt?.slice(0, 10) ?? '—'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </PageCard>
-                )}
-            </section>
+            </DashboardSection>
         </div>
     );
 }
@@ -995,9 +1196,13 @@ function ImpactCellAdminDashboard({
 }) {
     return (
         <div className="space-y-8" data-testid="impact-cell-admin-dashboard-root">
-            {/* Phase 09 — 6 KPI cards mirroring the cross-cell + cross-zonal scope. */}
-            <section className="motion-safe:animate-fade-in" data-testid="impact-cell-admin-kpi-row">
-                <SectionHeader title="Supervisor Snapshot" iconPath={zapIconPath} />
+            <DashboardSection
+                sectionTestId="impact-cell-admin-kpi-row"
+                eyebrow="Supervisor Snapshot"
+                title="Cross-cell & cross-zonal scope"
+                description="A consolidated view across every primary cell and every zonal coordinator for audit and oversight."
+                icon={zapIconPath}
+            >
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                     <KPICard accent="indigo"  caption="Primary Cells"       value={kpis.totalPrimaries}    trend="registered primaries" />
                     <KPICard accent="emerald" caption="Sub-cells"           value={kpis.totalSubCells}     trend="across all primaries" />
@@ -1006,16 +1211,18 @@ function ImpactCellAdminDashboard({
                     <KPICard accent="default" caption="Total Submissions"  value={kpis.totalSubmissions}  trend="all-time, cross-cell" />
                     <KPICard accent="default" caption="This Week"           value={kpis.weekSubmissions}   trend="last 7 days" />
                 </div>
-            </section>
+            </DashboardSection>
 
             {/* Cross-cell leadership rollup — same widget the admin sees. */}
             <LeadershipRollupWidget items={leadershipRollup} />
 
-            {/* Two-column cross-group feeds: mixed-source + zonal-narrowed.
-                Server-side filtered to GROUP_IMPACT_CELL authors; the zonal
-                feed narrows further to Impact_Zonal_Cordinator only. */}
-            <section className="motion-safe:animate-fade-in" data-testid="impact-cell-admin-feeds">
-                <SectionHeader title="Cross-Group Activity" iconPath={fileIconPath} />
+            <DashboardSection
+                sectionTestId="impact-cell-admin-feeds"
+                eyebrow="Cross-Group Activity"
+                title="Mixed-source submissions feed"
+                description="Two parallel feeds (mixed-author + zonal-narrowed) for audit visibility."
+                icon={fileIconPath}
+            >
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <CrossCellFeed
                         title="All Cross-Cell Submissions"
@@ -1029,7 +1236,7 @@ function ImpactCellAdminDashboard({
                         hideAuthorRole
                     />
                 </div>
-            </section>
+            </DashboardSection>
         </div>
     );
 }
@@ -1046,52 +1253,61 @@ function CrossCellFeed({
     hideAuthorRole?: boolean;
 }) {
     return (
-        <PageCard>
-            <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <DashboardCard dataCard="cross-cell-feed" className="flex flex-col">
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-700/60">
                 <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h4>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
             </div>
             {rows.length === 0 ? (
-                <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                    No recent activity.
-                </div>
+                <EmptyState
+                    title="No recent activity"
+                    iconPath={fileIconPath}
+                />
             ) : (
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700" data-testid={`cross-cell-feed-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+                <ul
+                    className="divide-y divide-gray-100 dark:divide-gray-700/60"
+                    data-testid={`cross-cell-feed-${title.toLowerCase().replace(/\s+/g, '-')}`}
+                >
                     {rows.map((row) => (
-                        <li key={row.id} className="px-4 py-3">
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <Link
-                                        href={route('impact-submissions.show', row.id)}
-                                        className="text-sm font-medium text-gray-900 transition-colors hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400"
-                                    >
-                                        {submissionTypeLabels[row.type] ?? row.type}: {row.preview}
-                                    </Link>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        {row.cellName ? <>Cell: <span className="font-medium">{row.cellName}</span> · </> : null}
-                                        {row.authorName ? <>by {row.authorName}</> : <>—</>}
-                                        {!hideAuthorRole && row.authorRole ? (
-                                            <> · <span className="font-mono text-[10px] text-gray-400">{row.authorRole}</span></>
-                                        ) : null}
-                                    </p>
-                                </div>
-                                <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
-                                    {row.createdAt?.slice(0, 10) ?? '—'}
-                                </span>
+                        <li key={row.id} className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-indigo-50/30 dark:hover:bg-gray-700/30">
+                            <span
+                                aria-hidden="true"
+                                className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-indigo-400 group-hover:bg-indigo-500 dark:bg-indigo-500"
+                            />
+                            <div className="min-w-0 flex-1">
+                                <Link
+                                    href={route('impact-submissions.show', row.id)}
+                                    className="text-sm font-medium text-gray-900 transition-colors hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400"
+                                >
+                                    {submissionTypeLabels[row.type] ?? row.type}: {row.preview}
+                                </Link>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {row.cellName ? <>Cell: <span className="font-medium text-gray-700 dark:text-gray-300">{row.cellName}</span> · </> : null}
+                                    {row.authorName ? <>by {row.authorName}</> : <>—</>}
+                                    {!hideAuthorRole && row.authorRole ? (
+                                        <> · <span className="font-mono text-[10px] text-gray-400">{row.authorRole}</span></>
+                                    ) : null}
+                                </p>
                             </div>
+                            <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
+                                {row.createdAt?.slice(0, 10) ?? '—'}
+                            </span>
                         </li>
                     ))}
                 </ul>
             )}
-        </PageCard>
+        </DashboardCard>
     );
 }
 
 function QuickLinkCard({ href, label, iconPath }: { href: string; label: string; iconPath: React.ReactNode }) {
+    // Phase 13+ premium polish — replaced dashed border + float-on-hover with
+    // a solid surface, soft hover ring, and a subtle border wash. The dashed
+    // border previously signalled "empty / dropzone" — wrong for actionable UI.
     return (
         <Link
             href={href}
-            className="group flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-5 text-sm font-semibold text-gray-700 transition-all hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 hover:shadow-card-hover dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-300"
+            className="group flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-5 text-sm font-semibold text-gray-700 shadow-card transition-all duration-200 hover:border-indigo-400 hover:bg-indigo-50/40 hover:text-indigo-700 hover:shadow-card-hover hover:ring-1 hover:ring-indigo-200/60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-300 dark:hover:ring-indigo-700/40"
             data-testid={`quick-link-${label.toLowerCase().replace(/\s+/g, '-')}`}
         >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 transition-transform group-hover:scale-110" aria-hidden="true">
@@ -1102,16 +1318,6 @@ function QuickLinkCard({ href, label, iconPath }: { href: string; label: string;
     );
 }
 
-/**
- * Phase 06d.0 — admin variant dashboard (canonical).
- *
- * Renders inside AdminDashboardLayout (sidebar already mounted).
- *  - Greeting block ("Good morning, Tunde")  — uses the auth user's name prop
- *  - 7-card row of premium KPIs with delta + sparkline + AnimatedCounter
- *  - Quick Actions row (4 cards — phase 06 polish retained)
- *  - 06d.2 will add System Overview + Recent Activity + Recent Registrations
- *    sections below the Quick Actions row.
- */
 /**
  * Phase 06d.1 — Admin dashboard Overview Analytics section.
  *
@@ -1141,7 +1347,17 @@ function OverviewAnalyticsSection({
             data-testid="overview-analytics-root"
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Overview Analytics</h3>
+                <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Trend
+                    </p>
+                    <h3 className="text-base font-semibold tracking-tight text-gray-900 dark:text-white">
+                        Overview Analytics
+                    </h3>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        Track how guests, contacts, submissions, and users evolve over time.
+                    </p>
+                </div>
                 <DateRangeFilter rangeKey={rangeKey} customFrom={rangeFrom} customTo={rangeTo} />
             </div>
             <Suspense
@@ -1189,7 +1405,6 @@ function AdminDashboard({
 }) {
     return (
         <div className="space-y-8" data-testid="admin-dashboard-root">
-            {/* Greeting — uses the actual logged-in admin's name from auth.user.name. */}
             <section className="motion-safe:animate-fade-in" data-testid="admin-greeting-section">
                 <Greeting fullName={userName ?? 'Administrator'} activeRole="Administrator" />
                 <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -1197,9 +1412,13 @@ function AdminDashboard({
                 </p>
             </section>
 
-            {/* 7-card row of premium KPIs */}
-            <section className="motion-safe:animate-fade-in" data-testid="admin-kpi-row">
-                <SectionHeader title="At a Glance" iconPath={zapIconPath} />
+            <DashboardSection
+                sectionTestId="admin-kpi-row"
+                eyebrow="At a Glance"
+                title="Key indicators"
+                description="Headline metrics across the platform. Each delta compares the last 7 days against the prior 7."
+                icon={zapIconPath}
+            >
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <KPICard
                         accent="indigo"
@@ -1265,11 +1484,14 @@ function AdminDashboard({
                         trend="system accounts"
                     />
                 </div>
-            </section>
+            </DashboardSection>
 
-            {/* Quick Actions — 4 cards (Phase 06 polish preserved) */}
-            <section className="motion-safe:animate-fade-in">
-                <SectionHeader title="Quick Actions" iconPath={zapIconPath} />
+            <DashboardSection
+                eyebrow="Quick Actions"
+                title="Jump straight to a workspace"
+                description="Common admin actions — guests, cells, reports, and bulk CSV import."
+                icon={zapIconPath}
+            >
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <QuickLinkCard
                         href={route('guests.index')}
@@ -1292,9 +1514,8 @@ function AdminDashboard({
                         iconPath={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>}
                     />
                 </div>
-            </section>
+            </DashboardSection>
 
-            {/* Phase 06d.1 — DateRangeFilter (eager) + lazy-loaded OverviewAnalytics */}
             <OverviewAnalyticsSection
                 rangeKey={rangeKey ?? 'week'}
                 rangeFrom={rangeFrom ?? null}
@@ -1303,13 +1524,8 @@ function AdminDashboard({
                 chartSeries={chartSeries ?? {}}
             />
 
-            {/* Phase 08+ — Overall leadership tree rollup (one card per primary cell).
-                Sits between the chart panel and the system-health blocks so the
-                "narrative" order on the admin dashboard reads: numbers → trend →
-                cross-cell leadership surface → operational health. */}
             <LeadershipRollupWidget items={leadershipRollup} />
 
-            {/* Phase 06d.2 — System Overview + Recent Activity + Recent Registrations */}
             <SystemOverviewPanel
                 stats={systemOverview ?? { dbSizeMb: 0, dbSizeLabel: '—', storageMb: 0, storageLabel: '—', activeUsers: 0, healthLabel: 'Healthy', healthTone: 'success' }}
             />

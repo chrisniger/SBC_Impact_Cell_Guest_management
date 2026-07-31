@@ -50,6 +50,42 @@ final class RoleHelper
     ];
 
     /**
+     * Phase 13 — subset of ROLE_NAMES surfaced on the PUBLIC signup
+     * form. Administrator / Supervisor / cross-cell-admin / FollowUp
+     * roles stay admin-only — provisioning them is `Admin\UserController::store()`
+     * territory, not a guest-facing form.
+     *
+     * As of 2026-07-31 the signup surface shows exactly two roles:
+     *   - `Impact_Leaders`        — cell-bound tier, carries
+     *                               `users.impact_cell_id` FK + the
+     *                               cell-detail seed (leadership team
+     *                               roster) on submit.
+     *   - `Impact_Zonal_Coordinator` — zone-wide overseer; no cell
+     *                               binding at signup (zone is assigned
+     *                               by Admin post-signup).
+     *
+     * FollowUpOfficer / Follow_UP_Admin / Follow_UP / Follow_UP_View_Only
+     * were intentionally removed from public signup; Admin still assigns
+     * them via /admin/users.
+     *
+     * Consumed by:
+     *   - Auth\RegisteredUserController::create() (Inertia payload)
+     *   - Auth\Requests\RegisterInertiaRequest::rules() (role allowlist)
+     *
+     * Single source of truth: if the public signup matrix changes,
+     * change it here ONLY (no separate constants in 2 files to drift).
+     */
+    public const SIGNUP_VISIBLE_ROLES = [
+        'Impact_Leaders',
+        'Impact_Zonal_Coordinator',
+    ];
+
+    public static function signupVisibleRoles(): array
+    {
+        return self::SIGNUP_VISIBLE_ROLES;
+    }
+
+    /**
      * Phase 09 — single-role constants for cleaner gate expressions in
      * controllers/policies. Use these instead of bare string literals so
      * a role rename only touches RoleHelper::ROLE_NAMES + the named

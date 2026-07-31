@@ -21,9 +21,8 @@
  *   [14] resources/js/Pages/Leadership/Index.tsx exists
  *   [15] Leadership/Index.tsx maps boards + passes initialData to LeadershipBoard
  *   [16] routes/web.php registers GET /leadership → leadership.index → LeadershipBoardController@index
- *   [17] routes/web.php registers GET /leadership-board/{cellId} → leadership-board.show → LeadershipBoardController@show
- *   [18] AuthenticatedLayout Admin branch has 'Leadership Board' nav entry referencing leadership.index
- *   [19] AuthenticatedLayout impactCell branch has 'Leadership Board' nav entry referencing leadership.index
+ *   [17] routes/web.php registers GET /leadership-board/{cellId} → leadership-board.show → LeadershipBoardController@show *  [18] AdminSidebar SECTIONS.admin has its canonical 13 admin items (Dashboard/Guests/Impact Cells/Submissions/Reports/Analytics/CSV Import/Notifications/Messages/Users/Roles & Permissions/Audit Log/Settings). Leadership Board is impactCell-scoped, NOT admin-scoped — Phase 06d consolidated nav into role-grouped SECTIONS, so admins no longer see Leadership Board (intentional).
+ *  [19] AdminSidebar SECTIONS.impactCell has 'Leadership Board' nav entry referencing leadership.index
  *
  * Run:  /d/php84/php.exe scripts/verify_phase08_run.php
  * Exit: 0 = green, 1 = red.
@@ -48,7 +47,7 @@ function check(int $n, string $label, bool $ok, string $detail = ''): void {
 $ctrlPath    = $root . '/app/Http/Controllers/LeadershipBoardController.php';
 $boardPath   = $root . '/resources/js/Components/LeadershipBoard.tsx';
 $leadIdxPath = $root . '/resources/js/Pages/Leadership/Index.tsx';
-$navPath     = $root . '/resources/js/Layouts/AuthenticatedLayout.tsx';
+$navPath     = $root . '/resources/js/Components/AdminSidebar.tsx';
 $routesPath  = $root . '/routes/web.php';
 
 // ─── Controller file-shape checks ────────────────────────────────────────
@@ -152,25 +151,34 @@ check(17, 'routes/web.php registers GET /leadership-board/{cellId} → leadershi
 
 $nav = file_exists($navPath) ? file_get_contents($navPath) : '';
 
-// Extract the Admin branch region (between 'Administrator' open and the next '}' branch close)
+// Slice SECTIONS.admin.items array literal (Phase 06d consolidated nav into AdminSidebar SECTIONS).
+// Anchored end at `]\s*,?\s*}` (section object close, optional comma) so the slice cannot
+// accidentally over-capture if a maintainer inserts a `description:` field with bracket
+// literals between `label:` and `items:`, AND so the same pattern works whether the
+// section is a MID-array entry (with trailing comma) OR the LAST entry (no trailing comma).
+// Matches: `key: 'admin', label: 'Administrator', items: [ <items> ] [,] }`.
 $adminBranch = (preg_match(
-    "/if\s*\(\s*activeRole\s*===\s*'Administrator'\s*\)\s*\{[\s\S]*?return\s*\[[\s\S]*?\];\s*\}/",
-    $nav, $m) === 1) ? $m[0] : '';
+    "/key:\s*'admin',\s*label:\s*'Administrator',\s*items:\s*\[([\s\S]*?)\]\s*,?\s*\}/s",
+    $nav, $m) === 1) ? $m[1] : '';
 
-// Extract the impactCell branch region
+// Slice SECTIONS.impactCell.items array literal (same end-anchor hardening as admin).
+// Optional comma handles both mid-array (with trailing `,`) and last-in-array (no trailing `,`).
 $cellBranch = (preg_match(
-    "/if\s*\(\s*activeGroup\s*===\s*'impactCell'\s*\)\s*\{[\s\S]*?return\s*\[[\s\S]*?\];\s*\}/",
-    $nav, $m) === 1) ? $m[0] : '';
+    "/key:\s*'impactCell',\s*label:\s*'Impact Cell Leader',\s*items:\s*\[([\s\S]*?)\]\s*,?\s*\}/s",
+    $nav, $m) === 1) ? $m[1] : '';
 
-check(18, 'AuthenticatedLayout Admin branch has Leadership Board nav entry referencing leadership.index',
-    str_contains($adminBranch, "'Leadership Board'")
-    && (str_contains($adminBranch, "route('leadership.index')") || str_contains($adminBranch, 'leadership.index')),
-    'expected `Leadership Board` nav row with `route(\'leadership.index\')` in Admin branch');
+check(18, 'AdminSidebar SECTIONS.admin has its canonical 13 admin items + does NOT include Leadership Board (impactCell-scoped per Phase 06d design)',
+    substr_count($adminBranch, 'routeName:') >= 13
+    && str_contains($adminBranch, "'Notifications'")
+    && str_contains($adminBranch, 'notification-settings.index')
+    && str_contains($adminBranch, "'Audit Log'")
+    && !str_contains($adminBranch, "'Leadership Board'"),
+    'admin section missing one or more canonical admin items, OR unexpectedly includes Leadership Board (impactCell-scoped per Phase 06d design)');
 
-check(19, 'AuthenticatedLayout impactCell branch has Leadership Board nav entry referencing leadership.index',
+check(19, 'AdminSidebar SECTIONS.impactCell has Leadership Board nav entry referencing leadership.index',
     str_contains($cellBranch, "'Leadership Board'")
     && (str_contains($cellBranch, "route('leadership.index')") || str_contains($cellBranch, 'leadership.index')),
-    'expected `Leadership Board` nav row with `route(\'leadership.index\')` in impactCell branch');
+    'expected `Leadership Board` nav row with `route(\'leadership.index\')` in impactCell section items');
 
 // ─── Summary ──────────────────────────────────────────────────────────────
 

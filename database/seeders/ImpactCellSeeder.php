@@ -10,29 +10,29 @@ use Illuminate\Database\Seeder;
  * ("Impact Cell Names (70 Hardcoded)"). The spec says ~70; the appendix actually
  * lists 68 — we use what's there. ~70 is approximate.
  *
- * Hierarchy per Implementation/04_Impact_Cell_Hierarchy.md § "Seed strategy":
- *   1. All cells seeded as primary (`is_primary = true`, `parent_cell_id = NULL`),
- *      ordered alphabetically.
- *   2. After the initial seed, the dev convenience split re-parents 4 of the APO*
- *      cells (APO-DUTSE, APO RESETTLEMENT, APO RESETTLEMENT B, APO LEGISLATIVE QTRS)
- *      into sub-cells under the APO primary — turning them from primaries into
- *      non-primaries. APO itself stays primary.
+ * As of 2026-07-31 every seeded cell is primary — `is_primary = true`,
+ * `parent_cell_id = NULL`. The dev convenience split (the 4 APO
+ * sub-cells) has been removed. The companion forward migration
+ * `2026_07_31_120000_flatten_all_impact_cells_to_primary.php` flattens
+ * any rows that pre-date this policy.
  *
  * Final state after seed:
- *   - 69 rows total (68 from the appendix + 1 added "APO" so the split demo has a parent)
- *   - 65 primary cells (69 - 4 re-parented; APO is still primary, plus 64 others)
- *   - 4 children (APO-DUTSE, APO RESETTLEMENT, APO RESETTLEMENT B, APO LEGISLATIVE QTRS)
- *   - 1 of those primaries (APO) has children
+ *   - 69 rows total (68 from the appendix + 1 added "APO" so the list has
+ *     a symmetric parent reference)
+ *   - 69 primary cells (0 children)
+ *   - No parent / sub-cell relationships
  *
- * Idempotency contract (intentional asymmetry, do NOT silently fix without thinking):
- *   - `firstOrCreate(['name' => …], […])` on Step 1 returns the existing row
- *     without re-applying the defaults — so if an admin manually changes
- *     `is_primary` or `order` on a non-APO cell, the seeder will NOT reset it.
- *   - Step 2 re-applies the APO split on every run — if an admin manually
- *     promotes one of the 4 APO children back to primary, the seeder will
- *     silently re-parent it. This is intentional for the dev split demo but
- *     should NOT ship to prod (per Implementation/04 § "Seed strategy":
- *     "The prod seed should NOT create these dev-only sub-cell links").
+ * Idempotency contract:
+ *   - `firstOrCreate(['name' => …], […])` returns the existing row on
+ *     re-seed and does NOT re-apply the defaults — so if an admin
+ *     manually changes `is_primary` or `order` on a row, the seeder
+ *     will NOT reset it.
+ *   - The previously-present Step 2 (APO sub-cell re-parenting) has been
+ *     removed. `APO_SUB_CELL_NAMES` is kept empty so external references
+ *     (e.g. `scripts/verify_phase03_run.php`) keep type-checking. Verify
+ *     Phase 13's flatten migration is documented as the canonical
+ *     mechanism for re-flattening if an admin manually creates a sub-cell
+ *     in the future.
  */
 class ImpactCellSeeder extends Seeder
 {
@@ -116,26 +116,26 @@ class ImpactCellSeeder extends Seeder
     ];
 
     /**
-     * The 4 sub-cells of the APO primary (per Implementation/04 § "Seed strategy").
-     * After the initial seed these rows are re-parented (parent_cell_id = APO's id,
-     * is_primary = false) — converting them from primaries into sub-cells.
+     * Empty leaf — kept as `public const` so external references
+     * (e.g. `scripts/verify_phase03_run.php`) keep type-checking.
      *
-     * Exposed as `public const` so scripts/verify_phase03_run.php can reference it
-     * for the destructive [7] assertion (reset + re-seed test).
+     * Pre-2026-07-31 this list enabled the dev convenience split that
+     * re-parented 4 APO children under the primary. That split is no
+     * longer part of the seed (the product decision is "every cell is
+     * primary; no sub-cells in scope"). The companion forward migration
+     * `2026_07_31_120000_flatten_all_impact_cells_to_primary.php`
+     * flattens pre-existing data, so the constant staying empty is the
+     * single source of truth that the seeder is flat-only.
      *
      * @var list<string>
      */
-    public const APO_SUB_CELL_NAMES = [
-        'APO-DUTSE',
-        'APO RESETTLEMENT',
-        'APO RESETTLEMENT B',
-        'APO LEGISLATIVE QTRS',
-    ];
+    public const APO_SUB_CELL_NAMES = [];
 
     public function run(): void
     {
-        // Step 1: seed all 68 as primaries, ordered alphabetically.
-        // firstOrCreate by name keeps this idempotent on re-seed.
+        // Step 1 (and ONLY step): seed all 69 as primaries, ordered
+        // alphabetically. firstOrCreate by name keeps this idempotent on
+        // re-seed.
         foreach (self::CELL_NAMES as $i => $name) {
             ImpactCell::firstOrCreate(
                 ['name' => $name],
@@ -147,22 +147,7 @@ class ImpactCellSeeder extends Seeder
             );
         }
 
-        // Step 2: split the APO primary — re-parent the 4 APO sub-cells under APO.
-        $apo = ImpactCell::where('name', 'APO')->first();
-        if ($apo !== null) {
-            foreach (self::APO_SUB_CELL_NAMES as $subName) {
-                $sub = ImpactCell::where('name', $subName)->first();
-                if ($sub === null) {
-                    continue;   // name not present in the list — defensive
-                }
-                // Idempotent: only update if the row isn't already a child of APO.
-                if ($sub->parent_cell_id !== $apo->id || $sub->is_primary !== false) {
-                    $sub->update([
-                        'parent_cell_id' => $apo->id,
-                        'is_primary'     => false,
-                    ]);
-                }
-            }
-        }
+        // Step 2 (dev-only APO sub-cell split) was removed 2026-07-31.
+        // See the class docblock + APO_SUB_CELL_NAMES const above.
     }
 }

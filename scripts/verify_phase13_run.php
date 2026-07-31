@@ -4,20 +4,35 @@
  *
  * Resolves the §1 Phase 12b footer latent bug: AdminSidebar.tsx NAV_ITEMS
  * had routeName: 'notification-settings.index' on both the "Notifications"
- * row (line 8) AND the "Settings" row (line 13). When the /notification-settings
- * route was active, BOTH nav items highlighted -- the bug.
+ * row AND the "Settings" row. When the /notification-settings route was
+ * active, BOTH nav items highlighted -- the bug.
  *
  * Fix: Settings row -> routeName: 'profile.edit' (user-settings fallback
  * per the §1 Phase 12b footer fix-plan). Notifications row unchanged because
  * 'notification-settings.index' is the canonical existing route.
  *
- * 13 sub-assertions across: self-syntax (1) -> NAV_ITEMS shape (2-3) ->
+ * Phase 13 follow-up (this turn): rewritten to match the
+ * SECTIONS: Section[] architecture (Phase 06d+ consolidation + Phase 09+
+ * reorg). Assertions [2][3][11][12] now read from AdminSidebar.tsx:
+ *
+ *   [2]  Tests `const SECTIONS: Section[] = [` + `type Section = {`
+ *        instead of the legacy `const NAV_ITEMS: NavSpec[] = ...`.
+ *
+ *   [3]  Tests the 13 admin labels inside SECTIONS.admin.items
+ *        (a regex'd slice of the admin section's items array).
+ *
+ *   [11] Tests the active-state contract lives INSIDE AdminSidebar
+ *        (`route().current()` + `.routeName` reference). The original
+ *        pointed at the now-removed AuthenticatedLayout.tsx; that contract
+ *        was consolidated into AdminSidebar.tsx in Phase 06d+.
+ *
+ *   [12] Tests `resolvedCurrentRoute === item.routeName` (the Phase 09+
+ *        identifier name assigning `active={!itemInert && resolvedCurrentRoute === item.routeName}`
+ *        on each AdminSidebarNavItem).
+ *
+ * 13 sub-assertions across: self-syntax (1) -> SECTIONS shape (2-3) ->
  * collision guard (4) -> fix verification (5-6) -> route registration (7-10)
  * -> active-state contract (11-12) -> HANDOFF state (13).
- *
- * Style: str_contains + line-window regex (mirrors Phase 09b / Phase 11b
- * verifier patterns). Line-window isolation avoids JSX brace brittleness
- * in NAV_ITEMS iconPath expressions.
  *
  * Run: php scripts/verify_phase13_run.php
  * Expected: 13 pass / 0 fail.
@@ -53,14 +68,12 @@ $app  = require $root . '/bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 $adminSidebarPath = $root . '/resources/js/Components/AdminSidebar.tsx';
-$authLayoutPath   = $root . '/resources/js/Layouts/AuthenticatedLayout.tsx';
 $routesPath       = $root . '/routes/web.php';
 $handoffPath      = $root . '/HANDOFF.md';
 
 $adminSidebarSrc = is_file($adminSidebarPath) ? file_get_contents($adminSidebarPath) : '';
-$authLayoutSrc   = is_file($authLayoutPath) ? file_get_contents($authLayoutPath) : '';
-$routesSrc       = is_file($routesPath) ? file_get_contents($routesPath) : '';
-$handoffSrc      = is_file($handoffPath) ? file_get_contents($handoffPath) : '';
+$routesSrc       = is_file($routesPath)       ? file_get_contents($routesPath)       : '';
+$handoffSrc      = is_file($handoffPath)      ? file_get_contents($handoffPath)      : '';
 
 // ---------------------------------------------------------------------------
 // [1] self-syntax -- verifier file parses cleanly.
@@ -74,47 +87,61 @@ check(1, 'verify_phase13_run.php parses cleanly (php -l)',
     'php -l reports "No syntax errors detected"');
 
 // ---------------------------------------------------------------------------
-// [2] AdminSidebar.tsx defines NAV_ITEMS array + NavSpec type.
+// [2] AdminSidebar.tsx defines SECTIONS + Section type (Phase 06d+/09+
+//     architecture -- was NAV_ITEMS + NavSpec type in earlier builds).
 // ---------------------------------------------------------------------------
-check(2, 'AdminSidebar.tsx defines NAV_ITEMS: NavSpec[] array + NavSpec type',
-    str_contains($adminSidebarSrc, 'const NAV_ITEMS: NavSpec[] = [')
-    && str_contains($adminSidebarSrc, 'type NavSpec = {'),
-    'must declare `type NavSpec = { label: string; href: string; routeName: string; iconPath: React.ReactNode; }` + `const NAV_ITEMS: NavSpec[] = [...]`');
+check(2, 'AdminSidebar.tsx defines SECTIONS: Section[] array + Section type (Phase 06d+/09+ reorg -- was NAV_ITEMS: NavSpec[] in earlier builds)',
+    str_contains($adminSidebarSrc, 'const SECTIONS: Section[] = [')
+    && str_contains($adminSidebarSrc, 'type Section = {'),
+    'must declare `type Section = { key: string; label: string; items: NavItem[]; }` + `const SECTIONS: Section[] = [...]` -- the role-grouped nav replaces the legacy flat NAV_ITEMS');
 
 // ---------------------------------------------------------------------------
-// [3] AdminSidebar.tsx NAV_ITEMS contains all 13 expected labels.
+// [3] AdminSidebar.tsx SECTIONS.admin.items contains all 13 expected admin
+//     labels (Phase 09 unified sidebar: Dashboard, Guests, Impact Cells,
+//     Submissions, Reports, Analytics, CSV Import, Notifications, Messages,
+//     Users, Roles & Permissions, Audit Log, Settings).
 // ---------------------------------------------------------------------------
-$expectedLabels = [
+$expectedAdminLabels = [
     'Dashboard', 'Guests', 'Impact Cells', 'Submissions', 'Reports',
     'Analytics', 'CSV Import', 'Notifications', 'Messages', 'Users',
     'Roles & Permissions', 'Audit Log', 'Settings',
 ];
-$allLabelsPresent = true;
-foreach ($expectedLabels as $lbl) {
-    if (!str_contains($adminSidebarSrc, "label: '{$lbl}'")) {
-        $allLabelsPresent = false;
-        break;
+// Doctrine consistency (Phase 06d.0 [3] canonical): end-anchor `[^\s]*\]\s*,?\s*}` AND
+// paired-fields doctrine (routeName + iconPath + href all present per item).
+preg_match("/key: 'admin',[\s\S]*?items:\s*\[([\s\S]*?)\]\s*,?\s*\}/s", $adminSidebarSrc, $adminSectionMatch);
+$adminSectionBlock = $adminSectionMatch[1] ?? '';
+$missingLabels = [];
+foreach ($expectedAdminLabels as $lbl) {
+    if (! preg_match("/label:\s*'" . preg_quote($lbl, '/') . "'/", $adminSectionBlock)) {
+        $missingLabels[] = $lbl;
     }
 }
-check(3, 'AdminSidebar.tsx NAV_ITEMS contains all 13 expected labels',
-    $allLabelsPresent,
-    'all 13 expected labels present in NAV_ITEMS (Dashboard, Guests, Impact Cells, Submissions, Reports, Analytics, CSV Import, Notifications, Messages, Users, Roles & Permissions, Audit Log, Settings)');
+$adminHrefCount      = preg_match_all("/href: /",       $adminSectionBlock);
+$adminRouteNameCount = preg_match_all("/routeName: '/", $adminSectionBlock);
+$adminIconPathCount  = preg_match_all("/iconPath: /",   $adminSectionBlock);
+check(3, 'AdminSidebar.tsx SECTIONS.admin.items contains all 13 expected admin labels AND each item has paired (label + href + routeName + iconPath) fields (paired-fields doctrine per Phase 06d.0 [3])  (got labels missing=' . count($missingLabels) . ', href/routeName/iconPath=' . $adminHrefCount . '/' . $adminRouteNameCount . '/' . $adminIconPathCount . ')',
+    empty($missingLabels)
+        && $adminHrefCount === 13
+        && $adminRouteNameCount === 13
+        && $adminIconPathCount === 13,
+    'SECTIONS.admin.items must include all 13 labels: ' . implode(', ', $expectedAdminLabels) . ' -- missing labels: ' . implode(', ', $missingLabels) .
+    ' AND each item must own ALL paired fields (label + href + routeName + iconPath — each count should be 13). If any count is off, the paired-fields doctrine is broken: a maintainer dropped a field assignment or added a shorthand-spread item.');
 
 // ---------------------------------------------------------------------------
 // [4] CRITICAL: routeName: 'notification-settings.index' appears EXACTLY ONCE.
 // ---------------------------------------------------------------------------
 check(4, "CRITICAL: 'notification-settings.index' routeName appears EXACTLY ONCE (collision guard -- the Phase 12b latent bug fix)",
     substr_count($adminSidebarSrc, "routeName: 'notification-settings.index'") === 1,
-    "substr_count('routeName: \\'notification-settings.index\\'') must equal 1 (was 2 before the fix: Notifications + Settings both used it; Phase 13 fix removes Settings' usage)");
+    "substr_count('routeName: \\\\'notification-settings.index\\\\'') must equal 1 across AdminSidebar.tsx (was 2 before the fix: Notifications + Settings both used it; Phase 13 fix removes Settings' usage)");
 
 // ---------------------------------------------------------------------------
 // [5] Notifications row uses 'notification-settings.index' (UNCHANGED -- canonical route).
 // ---------------------------------------------------------------------------
-// Line-window isolation: each NAV_ITEMS row is a single long line. Find
-// the line containing `{ label: 'Notifications'` and assert routeName within.
+// Line-window isolation: each SECTIONS entries row is a single long line. Find
+// the line containing `label: 'Notifications'` and assert routeName within.
 $notifLine = '';
 foreach (explode("\n", $adminSidebarSrc) as $line) {
-    if (str_contains($line, "{ label: 'Notifications'")) {
+    if (str_contains($line, "label: 'Notifications'")) {
         $notifLine = $line;
         break;
     }
@@ -124,14 +151,11 @@ check(5, "Notifications row keeps routeName 'notification-settings.index' (canon
     "Notifications row's single-line entry must contain `routeName: 'notification-settings.index'` (the canonical existing route for /notification-settings)");
 
 // ---------------------------------------------------------------------------
-// [6] THE FIX: Settings row uses href + routeName BOTH pointing to profile.edit
-//       (code-reviewer bullet #1 follow-up -- pairs href with routeName so
-//       clicking Settings actually navigates to /profile/edit, not a no-op
-//       anchor stub).
+// [6] THE FIX: Settings row uses href + routeName BOTH pointing to profile.edit.
 // ---------------------------------------------------------------------------
 $settingsLine = '';
 foreach (explode("\n", $adminSidebarSrc) as $line) {
-    if (str_contains($line, "{ label: 'Settings'")) {
+    if (str_contains($line, "label: 'Settings'")) {
         $settingsLine = $line;
         break;
     }
@@ -181,21 +205,22 @@ check(10, "routes/web.php does NOT register a 'admin.settings.index' route (sani
     "must not register 'admin.settings.index' route (would require route registration; the chosen fix uses profile.edit which already exists)");
 
 // ---------------------------------------------------------------------------
-// [11] AuthenticatedLayout.tsx preserves the active-state contract (top-bar pre-existing pattern).
+// [11] Active-state contract lives in AdminSidebar.tsx (Phase 06d+ retirement
+//      of AuthenticatedLayout.tsx consolidated the contract into AdminSidebar).
 // ---------------------------------------------------------------------------
-check(11, 'AuthenticatedLayout.tsx preserves the active-state contract via route().current() === routeName',
-    str_contains($authLayoutSrc, 'route().current()')
-    && str_contains($authLayoutSrc, 'currentRoute === item.routeName')
-    && str_contains($authLayoutSrc, 'navItemsFor('),
-    "must use `const currentRoute = route().current()` + `active={currentRoute === item.routeName}` for navItemsFor() active-state detection (the pre-existing top-bar pattern that AdminSidebar mirrors)");
+check(11, 'Active-state contract lives in AdminSidebar.tsx (Phase 06d+ consolidation: AuthenticatedLayout.tsx was removed; the contract moved into AdminSidebar)',
+    str_contains($adminSidebarSrc, 'route().current()')
+    && str_contains($adminSidebarSrc, 'routeName'),
+    'must resolve the current route name from `(window as any).route().current() ?? ...` and reference item.routeName for active highlighting inside AdminSidebar.tsx -- Phase 06d+ consolidated the active-state from the removed AuthenticatedLayout.tsx into AdminSidebar');
 
 // ---------------------------------------------------------------------------
-// [12] AdminSidebar.tsx mirrors the AuthenticatedLayout active-state contract.
+// [12] AdminSidebar.tsx computes resolvedCurrentRoute + uses it in `=== item.routeName`
+//      for the active highlight (Phase 09+ identifier name on AdminSidebarNavItem).
 // ---------------------------------------------------------------------------
-check(12, 'AdminSidebar.tsx mirrors the AuthenticatedLayout active-state contract (route().current() === routeName)',
-    str_contains($adminSidebarSrc, 'route().current()')
-    && str_contains($adminSidebarSrc, 'active={currentRoute === item.routeName}'),
-    "must compute `const currentRoute = (window as any).Ziggy ? (window as any).route().current() : ''` and pass `active={currentRoute === item.routeName}` to each AdminSidebarNavItem");
+check(12, 'AdminSidebar.tsx uses `resolvedCurrentRoute === item.routeName` for active highlighting on AdminSidebarNavItem',
+    preg_match('/resolvedCurrentRoute\s*===\s*item\.routeName/', $adminSidebarSrc) === 1
+    && str_contains($adminSidebarSrc, 'active='),
+    "must compute `const resolvedCurrentRoute = (window as any).route().current() ?? '\\';` and pass `active={!itemInert && resolvedCurrentRoute === item.routeName}` to each AdminSidebarNavItem -- the Phase 09+ identifier name (was `currentRoute` in the AuthenticatedLayout delegation; renamed to `resolvedCurrentRoute` when the contract moved to AdminSidebar)");
 
 // ---------------------------------------------------------------------------
 // [13] HANDOFF.md §1 has Phase 13 row marked with Done status.

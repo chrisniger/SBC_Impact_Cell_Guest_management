@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AdminUserRequest;
 use App\Http\Resources\UserResource;
+use App\Models\ImpactCell;
 use App\Models\User;
 use App\Support\RoleHelper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -99,11 +101,14 @@ class UserController extends Controller
         $this->authorize('create', User::class);
 
         $data = $request->validated();
+        // Phase 13 — leader-cell invariant (Impact_Leaders needs a cell).
+        $this->assertLeaderHasCell($data);
 
         $user = User::create([
-            'name'     => $data['name'],
-            'email'    => $data['email'],
-            'password' => $data['password'], // hashed via cast
+            'name'           => $data['name'],
+            'email'          => $data['email'],
+            'password'       => $data['password'], // hashed via cast
+            'impact_cell_id' => $data['impact_cell_id'] ?? null,
         ]);
 
         $user->syncRoles($data['roles']);
@@ -130,6 +135,11 @@ class UserController extends Controller
         return Inertia::render('Admin/Users/Edit', [
             'user'         => (new UserResource($user))->resolve($request),
             'rolesForNew'  => self::addableRoles(),
+            // Phase 13+ follow-up — filter to primary cells only. The
+            // public signup form already enforces this via the same query
+            // inside Auth\RegisteredUserController::create(); reusing
+            // the filter here keeps the admin Edit page consistent.
+            'cellsList'    => ImpactCell::where('is_primary', true)->ordered()->get(['id', 'name', 'is_primary']),
             'isSelf'       => (int) $user->id === (int) $request->user()->id,
             'isTrashed'    => $user->trashed(),
             'deletedAt'    => optional($user->deleted_at)?->toIso8601String(),
@@ -154,11 +164,14 @@ class UserController extends Controller
         $request->assertSelfCannotDemote();
 
         $data = $request->validated();
+        // Phase 13 — leader-cell invariant on update path (Impact_Leaders needs a cell).
+        $this->assertLeaderHasCell($data);
 
         $user->update([
-            'name'        => $data['name'],
-            'email'       => $data['email'],
-            'active_role' => $data['active_role'],
+            'name'           => $data['name'],
+            'email'          => $data['email'],
+            'active_role'    => $data['active_role'],
+            'impact_cell_id' => $data['impact_cell_id'] ?? null,
         ]);
 
         $user->syncRoles($data['roles']);
@@ -257,5 +270,40 @@ class UserController extends Controller
     public static function addableRoles(): array
     {
         return RoleHelper::ROLE_NAMES;
+    }
+
+    /**
+     * Phase 13 — "Impact_Leaders without an assigned cell is an invalid state."
+     *
+     * Mirrors AdminUserRequest::assertSelfCannotDemote's shape: a
+     * controller-side business rule, fired AFTER the standard rules pass,
+     * that raises a ValidationException with errors.impact_cell_id so the
+     * Inertia form re-renders with an inline error pointing at the
+     * dropdown.
+     *
+     * Why controller-side and not in the Form Request
+     * ------------------------------------------------
+     * The Form Request can express the same rule with
+     * `Rule::requiredIf(fn() => in_array('Impact_Leaders', $roles, true))`,
+     * which we DO in RegisterInertiaRequest (no impact_cell_id needed
+     * for FollowUpOfficer signup). On the admin path the same rule was
+     * tried but the resulting 422 message was confusing because the
+     * `exists` validator reported "doesn't exist" for null when the
+     * real failure is "you need to pick one". Doing the post-rules check
+     * here lets us throw a friendlier message keyed to the dropdown.
+     */
+    private function assertLeaderHasCell(array $data): void
+    {
+        $roles = (array) ($data['roles'] ?? []);
+        if (! in_array('Impact_Leaders', $roles, true)) {
+            return; // Only relevant for impact-cell leaders.
+        }
+
+        $cellId = trim((string) ($data['impact_cell_id'] ?? ''));
+        if ($cellId === '') {
+            throw ValidationException::withMessages([
+                'impact_cell_id' => 'Assign an Impact Cell before saving an Impact Leaders user.',
+            ]);
+        }
     }
 }

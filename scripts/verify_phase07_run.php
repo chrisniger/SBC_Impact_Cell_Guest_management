@@ -7,15 +7,18 @@ declare(strict_types=1);
  * Impact Cell Leader group (@activeGroup = impactCell) + inline impact_status editor.
  *
  * Sub-assertions [1]-[20] cover:
- *   [1]-[7]   AuthenticatedLayout nav shape (impactCell branch has 7 items in spec order;
- *             admin / followUp* branches unchanged as regression net)
- *   [8]-[9]   Route registration + Guest model fillable
- *   [10]-[12] DashboardController::leaderDashboard returns assignedGuests + real memberCount
- *   [13]-[14] ImpactSubmissionController shape (4 type dispatch + dup-prevention flash)
- *   [15]-[17] Soul search controller (q-length guard + type=soul scope)
- *   [18]      InlineImpactStatusPill component file + 3 status options + router.patch
- *   [19]      GuestController.updateImpactStatus method (authorize + JSON response)
- *   [20]      RoleHelper GROUP_GUEST_OWNER[impactCell] list contains 'impact_status'
+ *   [1]-[4]   AdminSidebar SECTIONS shape (Phase 06d+ consolidation: was
+ *             AuthenticatedLayout.navItemsFor() with role-grouped branches;
+ *             Phase 09+ reorganized into a single SECTIONS: Section[] array
+ *             with `key` + `label` + `items` per role group)
+ *   [5]-[7]   Route registration + Guest model fillable
+ *   [8]-[10] DashboardController::leaderDashboard returns assignedGuests + real memberCount
+ *   [11]-[14] ImpactSubmissionController shape (4 type dispatch + dup-prevention flash + soul-search guard)
+ *   [15]-[16] InlineImpactStatusPill component file + 3 status options + router.patch
+ *   [17]-[18] GuestController.updateImpactStatus method (authorize + JSON response + validate)
+ *   [19]      RoleHelper GROUP_GUEST_OWNER[impactCell] list contains 'impact_status'
+ *   [20]      Dashboard.tsx LeaderDashboard renders assigned-guests-table + uses pill
+ *   [21]      GuestController.updateImpactStatus column-level role guard before authorize()
  *
  * Exit code 0 when all pass, 1 when any fail.
  */
@@ -47,9 +50,16 @@ function section(string $title): void {
 }
 
 // ───────────────────────────────────────────────────────────────────
-// File contents (cheap, deterministic — read once, reuse across [1]-[20]).
+// File contents (cheap, deterministic — read once, reuse across [1]-[21]).
+//
+// Phase 06d+ consolidation note: AuthenticatedLayout.tsx was retired.
+// The role-grouped nav that used to live in `AuthenticatedLayout.navItemsFor()`
+// now lives in AdminSidebar.tsx as a SECTIONS: Section[] array (Phase 09+).
+// All [1]-[4] sub-assertions below were rewritten to read from AdminSidebar.
+// The Phase 07 doc-block claim "impactCell branch" is now the
+// `items: [...]` array nested inside the `key: 'impactCell'` section.
 // ───────────────────────────────────────────────────────────────────
-$layout     = file_get_contents(__DIR__ . '/../resources/js/Layouts/AuthenticatedLayout.tsx');
+$layout     = file_get_contents(__DIR__ . '/../resources/js/Components/AdminSidebar.tsx');
 $dashboard  = file_get_contents(__DIR__ . '/../resources/js/Pages/Dashboard.tsx');
 $pill       = file_get_contents(__DIR__ . '/../resources/js/Components/InlineImpactStatusPill.tsx');
 $routes     = file_get_contents(__DIR__ . '/../routes/web.php');
@@ -62,45 +72,72 @@ $policy     = file_get_contents(__DIR__ . '/../app/Policies/GuestPolicy.php');
 $roleHelper = file_get_contents(__DIR__ . '/../app/Support/RoleHelper.php');
 
 // ───────────────────────────────────────────────────────────────────
-// [1]-[2] Nav shape — impactCell branch.
+// [1]-[2] SECTIONS.impactCell.items shape (Phase 09+ refactor of what
+//        AuthenticatedLayout had as navItemsFor().impactCell).
 // ───────────────────────────────────────────────────────────────────
-section('Sidebar nav (impactCell branch)');
+section('Sidebar SECTIONS (impactCell)');
 
-preg_match('/if \(activeGroup === .impactCell.\) \{\s*return \[(.*?)\];\s*\}/s', $layout, $m);
-$impactCellNavBlock = $m[1] ?? '';
-$itemCount = preg_match_all('/label: /', $impactCellNavBlock);
-check(1, "impactCell nav branch has exactly 8 items including Leadership Board (Phase 08 add)  (got $itemCount)",
-    $itemCount === 8,
-    'expected 8 (7 Phase 07 entries + Leadership Board appended by Phase 08)');
+// Doctrine consistency: Phase 06d.0 [3] canonical SECTIONS-slice end-anchor
+// `]\s*,?\s*}` (whitespace-tolerant, optional comma) AND paired-fields
+// doctrine (routeName + iconPath + href all present per item). The prior
+// `/,?\s*\}/s` was already end-anchor-tighter — kept `,?\s*` for compactness
+// here, with paired-field counts added on top so cross-verifier consistency
+// is explicit (not just an oversight).
+preg_match("/key: 'impactCell',[\s\S]*?items:\s*\[([\s\S]*?)\]\s*,?\s*\}/s", $layout, $m);
+$impactCellItemsBlock  = $m[1] ?? '';
+$impactCellItemCount     = preg_match_all("/label: '/",   $impactCellItemsBlock);
+$impactCellHrefCount     = preg_match_all("/href: /",      $impactCellItemsBlock);
+$impactCellRouteNameCount = preg_match_all("/routeName: '/", $impactCellItemsBlock);
+$impactCellIconPathCount = preg_match_all("/iconPath: /",  $impactCellItemsBlock);
+check(1, 'AdminSidebar.tsx SECTIONS.impactCell.items has exactly 8 items, EACH with paired (label + href + routeName + iconPath) fields (paired-fields doctrine per Phase 06d.0 [3])  (got items/label/href/routeName/iconPath=' . $impactCellItemCount . '/' . $impactCellItemCount . '/' . $impactCellHrefCount . '/' . $impactCellRouteNameCount . '/' . $impactCellIconPathCount . ')',
+    $impactCellItemCount === 8
+        && $impactCellHrefCount === 8
+        && $impactCellRouteNameCount === 8
+        && $impactCellIconPathCount === 8,
+    'expected 8 items in the impactCell section: Dashboard, Members Data, Submit Report, Childbirth Notice, Souls Registration, Soul Search, My Reports, Leadership Board — AND each item must own ALL paired fields (label + href + routeName + iconPath). Phase 13 iconPath refactor to named ICON_* consts keeps the iconPath field shape, so per-item defense survives shorthand spread.');
 
-$specOrder = ['Dashboard', 'Members Data', 'Submit Report', 'Childbirth Notice', 'Souls Registration', 'Soul Search', 'My Reports'];
+$specOrder = ['Dashboard', 'Members Data', 'Submit Report', 'Childbirth Notice', 'Souls Registration', 'Soul Search', 'My Reports', 'Leadership Board'];
 $actualOrder = [];
 foreach ($specOrder as $label) {
-    if (strpos($impactCellNavBlock, "'$label'") !== false) $actualOrder[] = $label;
+    if (preg_match("/label: '" . preg_quote($label, '/') . "'/", $impactCellItemsBlock)) $actualOrder[] = $label;
 }
-check(2, "impactCell nav labels appear in spec order  (" . implode(' -> ', $specOrder) . ')',
+check(2, 'impactCell nav labels appear in spec order  (' . implode(' -> ', $specOrder) . ')',
     $actualOrder === $specOrder,
     'actual: ' . implode(' -> ', $actualOrder));
 
 // ───────────────────────────────────────────────────────────────────
-// [3]-[4] Nav shape — admin and followUp branches unchanged (regression net).
+// [3]-[4] SECTIONS.admin + SECTIONS.followUpOfficer (regression net;
+//        the old AuthenticatedLayout had separate role-grouped branches).
 // ───────────────────────────────────────────────────────────────────
-section('Other nav branches (regression net)');
+section('Other SECTIONS (regression net)');
 
-preg_match('/if \(activeRole === .Administrator.\) \{\s*return \[(.*?)\];\s*\}/s', $layout, $mAdmin);
-$adminBlock = $mAdmin[1] ?? '';
-$adminCount = preg_match_all('/label: /', $adminBlock);
-$adminHasAuditLog = strpos($adminBlock, "'Audit Log'") !== false;
-check(3, "Administrator nav branch — 8 items with Audit Log + Leadership Board (Phase 08 append)  (got $adminCount)",
-    $adminCount === 8 && $adminHasAuditLog,
-    'admin branch shape: expected 8 items (7 originals + Leadership Board appended by Phase 08), Audit Log still present');
+preg_match("/key: 'admin',[\s\S]*?items:\s*\[([\s\S]*?)\]\s*,?\s*\}/s", $layout, $mAdmin);
+$adminBlock             = $mAdmin[1] ?? '';
+$adminItemCount     = preg_match_all("/label: '/",   $adminBlock);
+$adminHrefCount     = preg_match_all("/href: /",      $adminBlock);
+$adminRouteNameCount = preg_match_all("/routeName: '/", $adminBlock);
+$adminIconPathCount = preg_match_all("/iconPath: /",  $adminBlock);
+$adminHasAuditLog = (bool) preg_match("/label: 'Audit Log'/", $adminBlock);
+check(3, 'AdminSidebar.tsx SECTIONS.admin.items has 13 items, EACH with paired (label + href + routeName + iconPath) fields (paired-fields doctrine per Phase 06d.0 [3])  (got items/label/href/routeName/iconPath=' . $adminItemCount . '/' . $adminItemCount . '/' . $adminHrefCount . '/' . $adminRouteNameCount . '/' . $adminIconPathCount . ')',
+    $adminItemCount === 13
+        && $adminHasAuditLog
+        && $adminHrefCount === 13
+        && $adminRouteNameCount === 13
+        && $adminIconPathCount === 13,
+    'admin section items count should be 13 (Phase 09 added Impact Cells + Submissions + Roles & Permissions + Analytics + Notifications + Reports + Messages + Settings etc.) AND each item must own ALL paired fields (label + href + routeName + iconPath) — the legacy flight had only 7; the Phase 09 unified sidebar paired-shape contract: 13 labels × 4 fields = 52 expected tokens (52 / 4 file matches)');
 
-preg_match("/if \(activeGroup === .followUpOfficer. \|\| activeGroup === .followUpTeam.\) \{\s*return \[(.*?)\];\s*\}/s", $layout, $mFu);
-$fuBlock = $mFu[1] ?? '';
-$fuCount = preg_match_all('/label: /', $fuBlock);
-check(4, "followUp nav branch unchanged — 3 items  (got $fuCount)",
-    $fuCount === 3,
-    'followUp branch shape changed; expected Dashboard + My Guests + Export CSV');
+preg_match("/key: 'followUpOfficer',[\s\S]*?items:\s*\[([\s\S]*?)\]\s*,?\s*\}/s", $layout, $mFu);
+$fuBlock                 = $mFu[1] ?? '';
+$fuItemCount     = preg_match_all("/label: '/",   $fuBlock);
+$fuHrefCount     = preg_match_all("/href: /",      $fuBlock);
+$fuRouteNameCount = preg_match_all("/routeName: '/", $fuBlock);
+$fuIconPathCount = preg_match_all("/iconPath: /",  $fuBlock);
+check(4, 'AdminSidebar.tsx SECTIONS.followUpOfficer.items has 3 items, EACH with paired (label + href + routeName + iconPath) fields (paired-fields doctrine per Phase 06d.0 [3], applied to all 3 SECTIONS slices consistently)  (got items/label/href/routeName/iconPath=' . $fuItemCount . '/' . $fuItemCount . '/' . $fuHrefCount . '/' . $fuRouteNameCount . '/' . $fuIconPathCount . ')',
+    $fuItemCount === 3
+        && $fuHrefCount === 3
+        && $fuRouteNameCount === 3
+        && $fuIconPathCount === 3,
+    'followUpOfficer section items count should be 3 (Dashboard + My Guests + Export CSV) — unchanged from earlier phases; equivalent followUpTeam section also has the same 3 items — AND each item must own ALL paired fields (label + href + routeName + iconPath) so the doctrine closes the cross-section consistency gap.');
 
 // ───────────────────────────────────────────────────────────────────
 // [5]-[7] Routes + fillable.
@@ -132,9 +169,9 @@ section('DashboardController::leaderDashboard()');
 
 $hasMemberCountQuery = preg_match("/ImpactSubmission::where\(.user_id., \\\$user->id\)\s*->where\(.type.,\s*.member.\)/", $dashCtrl) > -1;
 $noHardcodedZero     = has($dashCtrl, "'memberCount'      => 0,") === -1;
-check(8, "leaderDashboard() uses a real memberCount query (not hard-coded 0)",
+check(8, 'leaderDashboard() uses a real memberCount query (not hard-coded 0)',
     $hasMemberCountQuery && $noHardcodedZero,
-    "memberCount still hard-coded 0 OR the Submission query missing");
+    'memberCount still hard-coded 0 OR the Submission query missing');
 
 $hasAssignedGuestsKey = has($dashCtrl, "'assignedGuests' => \$assignedGuests") > -1;
 $hasAssignedGuestsQuery = has($dashCtrl, "where('nearest_impact_cell_id', \$primaryCellId)") > -1;
@@ -245,9 +282,6 @@ check(20, "Dashboard.tsx LeaderDashboard renders assigned-guests-table + import 
     $rendersTable && $usesPill && $importsPill,
     "table testid OR pill import OR usage missing");
 
-// ───────────────────────────────────────────────────────────────────
-// Summary
-// ───────────────────────────────────────────────────────────────────
 // ───────────────────────────────────────────────────────────────────
 // [21] Role guard for column-level access (Phase 07c hardening).
 // ───────────────────────────────────────────────────────────────────

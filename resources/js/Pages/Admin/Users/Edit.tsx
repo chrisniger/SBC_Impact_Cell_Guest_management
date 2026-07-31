@@ -8,6 +8,8 @@ import TextInput from '@/Components/TextInput';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { FormEventHandler, useState } from 'react';
 
+interface CellOption { id: string; name: string; is_primary: boolean; }
+
 interface AdminUsersEditPageProps {
     user: {
         id: number;
@@ -22,8 +24,15 @@ interface AdminUsersEditPageProps {
         joined_at: string | null;
         deleted_at: string | null;
         trashed: boolean;
+        // Phase 13 — assigned Impact Cell (FK for Impact_Leaders users).
+        // Nullable because FollowUpOfficer / Follow_UP_Admin signups don't
+        // carry one; the Edit page's select reads this value as the
+        // dropdown's pre-selected option.
+        impact_cell_id: string | null;
     };
     rolesForNew: string[];
+    // Phase 13 — full cell list for the "Assigned Impact Cell" select.
+    cellsList: CellOption[];
     isSelf: boolean;
     isTrashed: boolean;
     deletedAt: string | null;
@@ -68,6 +77,7 @@ const peopleEditIcon = (
 export default function AdminUsersEditPage({
     user,
     rolesForNew,
+    cellsList,
     isSelf,
     isTrashed,
     activeRole,
@@ -79,8 +89,16 @@ export default function AdminUsersEditPage({
         password: '',
         password_confirmation: '',
         roles: user.roles,
+        // Phase 13 — pre-fill assigned cell from the UserResource's
+        // `impact_cell_id` field. Empty string when null so the option
+        // list reads "— No cell —" via select placeholder.
+        impact_cell_id: user.impact_cell_id ?? '',
         active_role: user.active_role ?? '',
     });
+
+    // Admin-only "Impact_Leaders needs a cell" hint mirroring the
+    // controller's assertLeaderHasCell() server-side check.
+    const needsAssignedCell = data.roles.includes('Impact_Leaders');
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -313,6 +331,49 @@ export default function AdminUsersEditPage({
                             Drives the column-edit policy and the top-bar role badge.
                         </p>
                         <InputError message={errors.active_role} />
+                    </div>
+
+                    {/* Assigned Impact Cell — Phase 13.
+                      * Required when Impact_Leaders is in roles[] (server
+                      * checks again via assertLeaderHasCell). Same shape
+                      * as the public signup cell picker but with an
+                      * explicit "No cell assigned" blank-option (signup
+                      * has its own "— Pick the cell —" copy keyed off
+                      * `requiresCell`).
+                      *
+                      * Layout order differs intentionally from the
+                      * Auth/Register signup form: here the cell comes
+                      * AFTER the active-role dropdown because admin
+                      * edits typically start at the role layer and the
+                      * audit history (active role pinned by admin) is
+                      * more visible up top. */}
+                    <div className="space-y-1.5">
+                        <InputLabel htmlFor="users-edit-impact-cell" value="Assigned Impact Cell" />
+                        <select
+                            id="users-edit-impact-cell"
+                            name="impact_cell_id"
+                            value={data.impact_cell_id}
+                            onChange={(e) => setData('impact_cell_id', e.target.value)}
+                            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                            data-testid="users-edit-impact-cell"
+                            aria-describedby="users-edit-impact-cell-help"
+                            required={needsAssignedCell}
+                        >
+                            <option value="">
+                                {needsAssignedCell ? '— Pick the cell this leader heads —' : '— No cell assigned —'}
+                            </option>
+                            {cellsList.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name}{c.is_primary ? ' (primary)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p id="users-edit-impact-cell-help" className="text-xs text-gray-500 dark:text-gray-400">
+                            {needsAssignedCell
+                                ? 'Required for Impact Leaders — admin assigns the cell the leader heads.'
+                                : 'Optional for non-Impact_Leaders users. Leave blank for FollowUpOfficer / Follow_UP_Admin.'}
+                        </p>
+                        <InputError message={errors.impact_cell_id} />
                     </div>
 
                     {/* Footer */}

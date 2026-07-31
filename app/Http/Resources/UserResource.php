@@ -58,6 +58,21 @@ class UserResource extends JsonResource
             // the same shape; `trashed` is the boolean short-circuit.
             'deleted_at'        => optional($this->resource->deleted_at)?->toIso8601String(),
             'trashed'           => $this->resource->trashed(),
+
+            // Phase 13 — assigned Impact Cell (Leader→Cell FK).
+            // nullable because FollowUpOfficer / Follow_UP_Admin / Supervisor /
+            // Administrator signups don't carry one. Always serialized as
+            // snake_case to match the Inertia wire convention used by the
+            // Admin/Users Edit page's dropdown pre-selection.
+            //
+            // Returns the cast value directly (`'impact_cell_id' => 'string'`
+            // on the User model guarantees a string when present, null when
+            // absent). DO NOT wrap in `optional(...)?->__toString()` — that
+            // helper returned an empty string for null values, which the
+            // downstream `?? 'KEY_MISSING'` style probes misread as a
+            // missing key, AND the empty string did not match any
+            // `<option value="">` placeholder per React/HTML semantics.
+            'impact_cell_id'    => $this->resource->impact_cell_id,
         ];
     }
 }

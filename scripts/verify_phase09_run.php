@@ -12,7 +12,7 @@
  *       + updateOrCreate upsert by composite.
  *  [6]  NotificationSettingsController::destroy is admin-gated + findOrFail.
  *  [7]  routes/web.php registers all 3 notification-settings routes (index/store/destroy).
- *  [8]  Admin nav entry "Notifications" present in AuthenticatedLayout.tsx.
+ *  [8]  AdminSidebar SECTIONS.admin.items has 'Notifications' nav entry referencing notification-settings.index.
  *  [9]  Pages/Notifications/Settings.tsx exists with card-add-rule + card-rules-list sections.
  *  [10] Settings.tsx form has rule-action select (with both options) + rule-email + rule-submit.
  *  [11] Settings.tsx Active Rules table has remove button → router.delete(`/notification-settings/${id}`).
@@ -133,14 +133,26 @@ check(7, 'routes/web.php registers GET notification-settings.index + POST .store
     'missing one or more notification-settings route names');
 
 // ─────────────────────────────────────────────────────────────────────────
-// [8] Admin nav "Notifications" entry in AuthenticatedLayout (data-testid-derived).
+// [8] Admin nav "Notifications" entry in AdminSidebar SECTIONS.admin.items.
+//
+// Phase 06d consolidation retired AuthenticatedLayout.tsx — all nav is now
+// sourced from AdminSidebar.tsx's SECTIONS array. We slice the admin
+// section literal here so the assertion isn't polluted by the impactCell
+// or impactCellAdmin sections (neither contains 'Notifications' — it's
+// admin-only by design). End-anchor at `]\s*,\s*}` (section object close)
+// so a maintainer inserting a `description:` field with bracket literals
+// between label and items cannot accidentally expand the slice.
 // ─────────────────────────────────────────────────────────────────────────
-$navText = read('resources/js/Layouts/AuthenticatedLayout.tsx');
-check(8, 'AuthenticatedLayout nav includes Notifications -> /notification-settings (label -> nav-notifications testid)',
+$navText = read('resources/js/Components/AdminSidebar.tsx');
+$adminItems = (preg_match(
+    "/key:\s*'admin',\s*label:\s*'Administrator',\s*items:\s*\[([\s\S]*?)\]\s*,?\s*\}/s",
+    $navText, $m) === 1) ? $m[1] : '';
+check(8, 'AdminSidebar SECTIONS.admin.items includes Notifications (label + notification-settings.index routeName)',
     $navText !== ''
-    && str_contains($navText, "'Notifications'")
-    && str_contains($navText, "route('notification-settings.index')"),
-    'missing Notifications nav entry in AuthenticatedLayout');
+    && $adminItems !== ''
+    && str_contains($adminItems, "'Notifications'")
+    && str_contains($adminItems, 'notification-settings.index'),
+    'missing Notifications nav entry in AdminSidebar SECTIONS.admin.items');
 
 // ─────────────────────────────────────────────────────────────────────────
 // [9] Settings.tsx exists with card-add-rule + card-rules-list testids.

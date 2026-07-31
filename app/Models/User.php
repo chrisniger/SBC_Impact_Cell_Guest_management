@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\RoleHelper;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -12,6 +13,7 @@ use Spatie\Permission\Traits\HasRoles;
 /**
  * @property string|null $active_role
  * @property \Illuminate\Support\Carbon|null $last_seen_at
+ * @property string|null $impact_cell_id        Phase 13 — assigned cell (for Impact_Leaders).
  */
 class User extends Authenticatable
 {
@@ -26,6 +28,12 @@ class User extends Authenticatable
         'email',
         'password',
         'active_role',
+        // Phase 13 — populated either by Admin on the Edit page or by the
+        // registrant when they sign up as Impact_Leaders. Nullable so
+        // FollowUpOfficer / Follow_UP_Admin signups that don't pick a cell
+        // don't fail the FK existence rule (covered by 'nullable' on the
+        // column and 'nullable' rules in RegisterInertiaRequest).
+        'impact_cell_id',
     ];
 
     protected $hidden = [
@@ -40,6 +48,12 @@ class User extends Authenticatable
             'password'          => 'hashed',
             'last_seen_at'      => 'datetime',
             'deleted_at'        => 'datetime',
+            // Phase 13 — defense-in-depth cast: the column is a UUID string
+            // in MySQL, but if a future migration drops the HasUuids trait
+            // (e.g. to integer PKs), Eloquent would otherwise emit the raw
+            // value without a type. Locking it to 'string' here keeps the
+            // JSON wire format stable across refactors.
+            'impact_cell_id'    => 'string',
         ];
     }
 
@@ -88,5 +102,19 @@ class User extends Authenticatable
     public function activeGroup(): ?string
     {
         return RoleHelper::groupOf($this->activeRole());
+    }
+
+    /**
+     * Phase 13 — the cell this user leads (set on the public signup
+     * form when Impact_Leaders is selected, OR by Admin on
+     * /admin/users/{user}/edit). Inverse is `ImpactCell::leaderUsers()`.
+     *
+     * Uses BelongsTo so Eloquent eager-loads cleanly via
+     * `User::with('assignedImpactCell')`. Dashboards that need the
+     * roster (LeaderDashboard, ImpactCellAdminDashboard) call this.
+     */
+    public function assignedImpactCell(): BelongsTo
+    {
+        return $this->belongsTo(ImpactCell::class, 'impact_cell_id');
     }
 }
