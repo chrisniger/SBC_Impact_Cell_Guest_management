@@ -6,6 +6,8 @@
 
 This is the **build-state + next-steps** document. For the _design intent_ (what we're building and why), see `Plan/` and `Implementation/`. For the _technology mapping_ (which Laravel package / idiom replaces which old-stack idea), see `Implementation/00_Laravel_Bridge.md`.
 
+> **Booting on a new machine?** Skip the narrative below and start with **[`migrate.md`](./migrate.md)** (at the repo root) — a copy-paste-ready prompt that walks a coding agent (Freebuff / minimax-m3 / Claude / etc.) through clone → `composer install` → `pnpm install --frozen-lockfile` → `cp .env.example .env && php artisan key:generate` → `php artisan migrate --force` → `pnpm run build` → smoke-test, in 10 numbered steps. Defaults to **sqlite** (zero-config — `.env.example` ships that way); switch to **mysql** via XAMPP if you prefer. Once you're serving at `http://127.0.0.1:8000`, come back here for §0 TL;DR + §1 build state.
+
 ---
 
 ## 0. TL;DR
