@@ -66,9 +66,12 @@ class AdminUserRequest extends FormRequest
             $merged['active_role'] = $merged['roles'][0] ?? '';
         }
 
-        // Defence-in-depth — frontend always sends an array.
+        // Defence-in-depth — frontend always sends arrays.
         if (isset($merged['roles']) && ! is_array($merged['roles'])) {
             $merged['roles'] = [$merged['roles']];
+        }
+        if (isset($merged['zonal_impact_cell_ids']) && ! is_array($merged['zonal_impact_cell_ids'])) {
+            $merged['zonal_impact_cell_ids'] = [$merged['zonal_impact_cell_ids']];
         }
 
         $this->replace($merged);
@@ -93,10 +96,32 @@ class AdminUserRequest extends FormRequest
                 'string',
                 Rule::in($this->input('roles', [])),
             ],
-            // Phase 13 — assigned cell. Always optional here; the
-            // controller enforces "must be set if Impact_Leaders is in roles"
-            // so the Inertia form can render errors.impact_cell_id inline.
-            'impact_cell_id'    => ['nullable', 'string', 'uuid', Rule::exists('impact_cells', 'id')],
+            // Phase 13 — one assigned cell for Impact_Leaders.
+            // The controller enforces the role-specific required rule so
+            // the Inertia form can render a friendly inline error.
+            // Phase 18 — also enforce the one-credential-per-cell
+            // invariant; on PUT/PATCH the editing user themselves are
+            // ignored so a profile-only edit doesn't trip the rule. On
+            // POST (no `{user}` route segment) we explicitly pass null so a
+            // hand-crafted wire-level `user=` cannot influence the
+            // exclusion predicate.
+            'impact_cell_id' => [
+                'nullable',
+                'string',
+                'uuid',
+                Rule::exists('impact_cells', 'id')->where(fn ($query) => $query->where('is_primary', true)),
+                new \App\Rules\ImpactCellHasNoLiveLeader(
+                    $this->isMethod('POST') ? null : $targetId
+                ),
+            ],
+            // Phase 15 — one or more cells for Impact_Zonal_Coordinator.
+            'zonal_impact_cell_ids' => ['nullable', 'array'],
+            'zonal_impact_cell_ids.*' => [
+                'required',
+                'string',
+                'uuid',
+                Rule::exists('impact_cells', 'id')->where(fn ($query) => $query->where('is_primary', true)),
+            ],
         ];
 
         // Password is mandatory on create, optional on edit (blank = keep
@@ -114,6 +139,8 @@ class AdminUserRequest extends FormRequest
         return [
             'roles.required' => 'A user must have at least one role.',
             'active_role.in' => 'The active role must be one of the assigned roles.',
+            'impact_cell_id.exists' => 'The selected Impact Cell is not available for assignment.',
+            'zonal_impact_cell_ids.*.exists' => 'Each selected Impact Cell must be an available primary cell.',
         ];
     }
 

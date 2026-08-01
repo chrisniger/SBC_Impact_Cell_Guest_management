@@ -7,6 +7,7 @@ use App\Http\Requests\AdminUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\ImpactCell;
 use App\Models\User;
+use App\Rules\ImpactCellHasNoLiveLeader;
 use App\Support\RoleHelper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -63,7 +64,9 @@ class UserController extends Controller
         $filter = $request->string('filter')->toString();
         $showTrashed = $filter === 'trashed';
 
-        $query = User::query()->orderBy('name');
+        $query = User::query()
+            ->with('zonalImpactCells:id')
+            ->orderBy('name');
 
         if ($showTrashed) {
             $query->onlyTrashed();
@@ -83,6 +86,7 @@ class UserController extends Controller
             'canCreate'     => true,
             'activeRole'    => $request->user()?->activeRole(),
             'rolesForNew'   => self::addableRoles(),
+            'cellsList'     => self::cellsForAssignment(),
             'showTrashed'   => $showTrashed,
             'trashedCount'  => User::onlyTrashed()->count(),
         ]);
@@ -101,18 +105,38 @@ class UserController extends Controller
         $this->authorize('create', User::class);
 
         $data = $request->validated();
-        // Phase 13 — leader-cell invariant (Impact_Leaders needs a cell).
-        $this->assertLeaderHasCell($data);
+        $this->assertRolesHaveCells($data);
 
-        $user = User::create([
-            'name'           => $data['name'],
-            'email'          => $data['email'],
-            'password'       => $data['password'], // hashed via cast
-            'impact_cell_id' => $data['impact_cell_id'] ?? null,
-        ]);
+        $user = DB::transaction(function () use ($data) {
+            // Phase 18 — one-credential-per-cell invariant (race-condition
+            // belt-and-suspenders). The AdminUserRequest::rules() already
+            // surface the friendly error via FormRequest; lockForUpdate +
+            // re-check inside this transaction serialises simultaneous
+            // POSTs so two admins can't both assign themselves to the
+            // same Impact Cell as Impact_Leaders.
+            $cellId = in_array('Impact_Leaders', $data['roles'], true)
+                ? ($data['impact_cell_id'] ?? null)
+                : null;
+            if ($cellId) {
+                ImpactCell::where('id', $cellId)->lockForUpdate()->first();
+                if (ImpactCellHasNoLiveLeader::hasLiveLeader((string) $cellId)) {
+                    throw ValidationException::withMessages([
+                        'impact_cell_id' => ImpactCellHasNoLiveLeader::OCCUPIED_MESSAGE,
+                    ]);
+                }
+            }
 
-        $user->syncRoles($data['roles']);
-        $user->forceFill(['active_role' => $data['active_role']])->save();
+            $u = User::create([
+                'name'           => $data['name'],
+                'email'          => $data['email'],
+                'password'       => $data['password'], // hashed via cast
+                'impact_cell_id' => $cellId,
+            ]);
+            $u->syncRoles($data['roles']);
+            $u->forceFill(['active_role' => $data['active_role']])->save();
+            $u->zonalImpactCells()->sync($data['zonal_impact_cell_ids'] ?? []);
+            return $u;
+        });
 
         return redirect()
             ->route('admin.users.index')
@@ -133,13 +157,13 @@ class UserController extends Controller
         $this->authorize('view', $user);
 
         return Inertia::render('Admin/Users/Edit', [
-            'user'         => (new UserResource($user))->resolve($request),
+            'user'         => (new UserResource($user->load('zonalImpactCells:id')))->resolve($request),
             'rolesForNew'  => self::addableRoles(),
             // Phase 13+ follow-up — filter to primary cells only. The
             // public signup form already enforces this via the same query
             // inside Auth\RegisteredUserController::create(); reusing
             // the filter here keeps the admin Edit page consistent.
-            'cellsList'    => ImpactCell::where('is_primary', true)->ordered()->get(['id', 'name', 'is_primary']),
+            'cellsList'    => self::cellsForAssignment(),
             'isSelf'       => (int) $user->id === (int) $request->user()->id,
             'isTrashed'    => $user->trashed(),
             'deletedAt'    => optional($user->deleted_at)?->toIso8601String(),
@@ -164,23 +188,45 @@ class UserController extends Controller
         $request->assertSelfCannotDemote();
 
         $data = $request->validated();
-        // Phase 13 — leader-cell invariant on update path (Impact_Leaders needs a cell).
-        $this->assertLeaderHasCell($data);
+        $this->assertRolesHaveCells($data);
 
-        $user->update([
-            'name'           => $data['name'],
-            'email'          => $data['email'],
-            'active_role'    => $data['active_role'],
-            'impact_cell_id' => $data['impact_cell_id'] ?? null,
-        ]);
+        DB::transaction(function () use ($user, $data) {
+            $newCellId = in_array('Impact_Leaders', $data['roles'], true)
+                ? ($data['impact_cell_id'] ?? null)
+                : null;
 
-        $user->syncRoles($data['roles']);
+            // Phase 18 — only lock + recheck when the cell binding is
+            // CHANGING. Profile-only edits on the same cell don't
+            // re-trip the invariant; AdminUserRequest::rules() with
+            // ignore($userId) excludes the editing user themselves.
+            if ($newCellId && $user->impact_cell_id !== $newCellId) {
+                ImpactCell::where('id', $newCellId)->lockForUpdate()->first();
+                if (ImpactCellHasNoLiveLeader::hasLiveLeader((string) $newCellId, (int) $user->id)) {
+                    throw ValidationException::withMessages([
+                        'impact_cell_id' => ImpactCellHasNoLiveLeader::OCCUPIED_MESSAGE,
+                    ]);
+                }
+            }
 
-        // Password is optional on edit — only update if explicitly set.
-        // Empty string + trimmed empty input both fall through to a no-op.
-        if (! empty($data['password'] ?? null)) {
-            $user->update(['password' => $data['password']]); // hashed via cast
-        }
+            $user->update([
+                'name'           => $data['name'],
+                'email'          => $data['email'],
+                'active_role'    => $data['active_role'],
+                // A cell assignment is meaningful on the User row only for
+                // Impact_Leaders. Clear stale leader data when an admin removes
+                // that role during an edit.
+                'impact_cell_id' => $newCellId,
+            ]);
+
+            $user->syncRoles($data['roles']);
+            $user->zonalImpactCells()->sync($data['zonal_impact_cell_ids'] ?? []);
+
+            // Password is optional on edit — only update if explicitly set.
+            // Empty string + trimmed empty input both fall through to a no-op.
+            if (! empty($data['password'] ?? null)) {
+                $user->update(['password' => $data['password']]); // hashed via cast
+            }
+        });
 
         return redirect()
             ->route('admin.users.index')
@@ -272,8 +318,16 @@ class UserController extends Controller
         return RoleHelper::ROLE_NAMES;
     }
 
+    /** Primary cells are the assignable units after the Phase 13 flattening. */
+    private static function cellsForAssignment(): \Illuminate\Database\Eloquent\Collection
+    {
+        return ImpactCell::where('is_primary', true)
+            ->ordered()
+            ->get(['id', 'name', 'is_primary']);
+    }
+
     /**
-     * Phase 13 — "Impact_Leaders without an assigned cell is an invalid state."
+     * Phase 15 — role-specific cell assignment invariant.
      *
      * Mirrors AdminUserRequest::assertSelfCannotDemote's shape: a
      * controller-side business rule, fired AFTER the standard rules pass,
@@ -292,17 +346,21 @@ class UserController extends Controller
      * real failure is "you need to pick one". Doing the post-rules check
      * here lets us throw a friendlier message keyed to the dropdown.
      */
-    private function assertLeaderHasCell(array $data): void
+    private function assertRolesHaveCells(array $data): void
     {
         $roles = (array) ($data['roles'] ?? []);
-        if (! in_array('Impact_Leaders', $roles, true)) {
-            return; // Only relevant for impact-cell leaders.
-        }
 
-        $cellId = trim((string) ($data['impact_cell_id'] ?? ''));
-        if ($cellId === '') {
+        if (in_array('Impact_Leaders', $roles, true)
+            && trim((string) ($data['impact_cell_id'] ?? '')) === '') {
             throw ValidationException::withMessages([
                 'impact_cell_id' => 'Assign an Impact Cell before saving an Impact Leaders user.',
+            ]);
+        }
+
+        if (in_array('Impact_Zonal_Coordinator', $roles, true)
+            && count(array_filter((array) ($data['zonal_impact_cell_ids'] ?? []))) === 0) {
+            throw ValidationException::withMessages([
+                'zonal_impact_cell_ids' => 'Assign at least one Impact Cell before saving a Zonal Coordinator.',
             ]);
         }
     }

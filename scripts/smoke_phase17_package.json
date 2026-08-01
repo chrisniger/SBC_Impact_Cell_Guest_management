@@ -1,0 +1,13 @@
+{
+    "name": "impact-portal-plus-phase17-smoke",
+    "version": "1.0.0",
+    "description": "Local dep island for the Phase 17 visual smoke test (scripts/smoke_phase17.sh + driver.mjs). Kept SEPARATE from the project's root package.json so the smoke test never pollutes the dev-dep chain.",
+    "private": true,
+    "type": "module",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "dependencies": {
+        "ws": "^8.18.0"
+    }
+}

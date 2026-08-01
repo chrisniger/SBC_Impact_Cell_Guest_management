@@ -62,7 +62,7 @@ class DashboardController extends Controller
             return $this->impactCellAdminDashboard($request, $role);
         }
 
-        if ($role === 'Impact_Zonal_Cordinator') {
+        if ($role === 'Impact_Zonal_Coordinator') {
             return $this->zonalDashboard($user, $role);
         }
 
@@ -342,7 +342,7 @@ class DashboardController extends Controller
      *     GROUP_IMPACT_CELL authors; matches ImpactSubmissionController::index()
      *     scope).
      *   - Recent zonal-coordinator submissions feed (same scope, but filtered to
-     *     Impact_Zonal_Cordinator role only).
+     *     Impact_Zonal_Coordinator role only).
      *   - KPIs: total primaries, total sub-cells, total cross-group users,
      *     submissions in last 7d.
      *
@@ -352,6 +352,7 @@ class DashboardController extends Controller
      */
     private function impactCellAdminDashboard(Request $request, ?string $role): Response
     {
+        $user = $request->user();
         $now = now();
         $weekStart = $now->copy()->subDays(7);
 
@@ -366,7 +367,7 @@ class DashboardController extends Controller
             'totalPrimaries' => (int) ImpactCell::primary()->count(),
             'totalSubCells'  => (int) ImpactCell::sub()->count(),
             'crossGroupUsers'=> (int) User::query()->whereIn('active_role', RoleHelper::GROUP_IMPACT_CELL)->count(),
-            'zonalCoordinators' => (int) User::query()->where('active_role', 'Impact_Zonal_Cordinator')->count(),
+            'zonalCoordinators' => (int) User::query()->where('active_role', 'Impact_Zonal_Coordinator')->count(),
         ];
 
         // Recent cross-cell submissions feed (mixed-source across groupImpactCell authors).
@@ -386,10 +387,10 @@ class DashboardController extends Controller
             ])->all();
 
         // Zonal-specific feed — same GROUP_IMPACT_CELL authors but narrowed to
-        // Impact_Zonal_Cordinator so the supervisor can audit zonal activity
+        // Impact_Zonal_Coordinator so the supervisor can audit zonal activity
         // separately from cell-leader activity.
         $recentZonalSubs = ImpactSubmission::query()
-            ->whereHas('user', fn ($q) => $q->where('active_role', 'Impact_Zonal_Cordinator'))
+            ->whereHas('user', fn ($q) => $q->where('active_role', 'Impact_Zonal_Coordinator'))
             ->with(['impactCell:id,name', 'user:id,name'])
             ->orderByDesc('created_at')
             ->limit(10)
@@ -417,7 +418,7 @@ class DashboardController extends Controller
             'recentCrossCellSubs'=> $recentCrossCellSubs,
             'recentZonalSubs'    => $recentZonalSubs,
             'leadershipRollup'   => $this->buildLeadershipRollup(),
-            'globalSearchIndex'  => $this->buildGlobalSearchIndex(),
+            'globalSearchIndex'  => $this->buildGlobalSearchIndex($user, $role, 'impactCell'),
             'activeRole'         => $role,
             'activeGroup'        => 'impactCell',
         ]);
@@ -478,6 +479,7 @@ class DashboardController extends Controller
      */
     private function adminDashboard(Request $request, ?string $role, ?string $group): Response
     {
+        $user = $request->user();
         $base = Guest::query();
 
         // ── 7 KPI snapshots (matches stripe-style 7-card admin grid) ──
@@ -555,7 +557,7 @@ class DashboardController extends Controller
             'rangeLabels' => $range['labels'],
             'chartSeries' => $chartSeries,
             'systemOverview'      => $this->systemOverviewStats(),
-            'globalSearchIndex'   => $this->buildGlobalSearchIndex(),
+            'globalSearchIndex'   => $this->buildGlobalSearchIndex($user, $role, $group),
             'recentActivity'      => $this->buildRecentActivityTiles(),
             'recentRegistrations' => $this->buildRecentRegistrations(),
             // Phase 08+ — admin-wide leadership rollup (one compact card per primary,
@@ -1166,25 +1168,163 @@ class DashboardController extends Controller
     }
 
     /**
-     * Phase 06d.2 — global search index for the AdminDashboardLayout topbar
-     * (latest 5 of each category → max 20 items; client-side filter).
+     * Phase 06d.2 + Phase 16 — global search index for the
+     * AdminDashboardLayout topbar. Returns up to 5 latest per category
+     * (cap 20, client-side filter).
+     *
+     * Phase 16 user-scoping keeps the system-wide baseline intact for
+     * `Administrator` and `Impact_Cell_Admin` (cross-cell supervisors by
+     * design). For every other role, each category is restricted to rows
+     * the current user submitted OR that are otherwise related to them,
+     * so the search bar in `OweLeader`'s dashboard only reflects work
+     * connected to ACO/JEDO + their own submissions.
+     *
+     * Scope matrix (non-matching rows → excluded):
+     *   - Administrator / Impact_Cell_Admin → system-wide (preserved).
+     *   - Impact_Leaders / Impact_Cell_Report (impactCell group):
+     *       submissions: user_id = self
+     *       guests:      nearest_impact_cell_id ∈ {self cell ∪ sub-cells}
+     *       cells:       {self cell} ∪ its sub-cells
+     *       users:       self only
+     *   - Impact_Zonal_Coordinator:
+     *       submissions: user_id = self OR impact_cell_id ∈ zonal cells
+     *       guests:      nearest_impact_cell_id ∈ zonal cells
+     *       cells:       zonal cells
+     *       users:       self only
+     *   - FollowUpOfficer / Follow_UP_Admin (followUpOfficer group):
+     *       submissions: user_id = self
+     *       guests:      follow_officer_id = self
+     *       cells:       self.impact_cell_id (if any)
+     *       users:       self only
+     *   - Fallback (team leads / Supervisor / ungrouped):
+     *       submissions: user_id = self; everything else = self only.
+     *
+     * Why every section is wrapped with `if ($user)` and per-role checks:
+     * the controller index() can legitimately be entered with a missing
+     * user in edge cases (mid-logout race, programmatic probes); every
+     * scoped branch then safely returns `[]` instead of throwing an NPE.
      */
-    private function buildGlobalSearchIndex(): array
+    private function buildGlobalSearchIndex(?User $user, ?string $role, ?string $group): array
     {
+        // ─── Broad index path (preserves Phase 06d.2 baseline) ─────────
+        if ($role === null
+            || $role === 'Administrator'
+            || RoleHelper::isImpactCellAdmin($role)) {
+            $items = [];
+            foreach (Guest::orderByDesc('created_at')->limit(5)->get(['id', 'guest_name', 'phone']) as $g) {
+                $items[] = ['id' => (string) $g->id, 'category' => 'guest', 'label' => $g->guest_name ?: '(unnamed)', 'subtitle' => $g->phone ?? '', 'href' => route('guests.show', $g->id)];
+            }
+            foreach (ImpactCell::orderByDesc('created_at')->limit(5)->get(['id', 'name']) as $c) {
+                $items[] = ['id' => (string) $c->id, 'category' => 'cell', 'label' => $c->name, 'subtitle' => 'Impact Cell', 'href' => route('impact-cells.show', $c->id)];
+            }
+            foreach (ImpactSubmission::with('impactCell:id,name')->orderByDesc('created_at')->limit(5)->get(['id', 'type', 'data', 'impact_cell_id']) as $s) {
+                $preview = $s->data['full_name'] ?? $s->data['name'] ?? '—';
+                $items[] = ['id' => (string) $s->id, 'category' => 'submission', 'label' => $this->adminSubmissionTypeLabel($s->type) . ': ' . $preview, 'subtitle' => $s->impactCell?->name ?? '', 'href' => route('impact-submissions.show', $s->id)];
+            }
+            foreach (User::orderByDesc('created_at')->limit(5)->get(['id', 'name', 'email']) as $u) {
+                $items[] = ['id' => (string) $u->id, 'category' => 'user', 'label' => $u->name, 'subtitle' => $u->email, 'href' => '/users'];
+            }
+            return $items;
+        }
+
+        // ─── User-scoped path ─────────────────────────────────────────
+        if ($user === null) {
+            return [];
+        }
         $items = [];
-        foreach (Guest::orderByDesc('created_at')->limit(5)->get(['id', 'guest_name', 'phone']) as $g) {
-            $items[] = ['id' => (string) $g->id, 'category' => 'guest', 'label' => $g->guest_name ?: '(unnamed)', 'subtitle' => $g->phone ?? '', 'href' => route('guests.show', $g->id)];
+
+        // Submissions
+        // Cache the zonal cell ID list ONCE — the same set drives three
+        // downstream branches (submissions, guests, cells). Without hoisting,
+        // every dashboard render issues 3 identical SELECTs against the
+        // pivot table for zonal coordinators.
+        if ($role === 'Impact_Zonal_Coordinator') {
+            $zonalIds = $user->zonalImpactCells()->pluck('impact_cells.id')->all();
+            $subQuery = ImpactSubmission::query();
+            if (! empty($zonalIds)) {
+                $subQuery->where(function ($q) use ($user, $zonalIds) {
+                    $q->where('user_id', $user->id)
+                      ->orWhereIn('impact_cell_id', $zonalIds);
+                });
+            } else {
+                $subQuery->where('user_id', $user->id);
+            }
+        } else {
+            // Impact_Leaders, Impact_Cell_Report, FollowUp*, Supervisor,
+            // ungrouped — own submissions only.
+            $subQuery = ImpactSubmission::where('user_id', $user->id);
         }
-        foreach (ImpactCell::orderByDesc('created_at')->limit(5)->get(['id', 'name']) as $c) {
-            $items[] = ['id' => (string) $c->id, 'category' => 'cell', 'label' => $c->name, 'subtitle' => 'Impact Cell', 'href' => route('impact-cells.show', $c->id)];
-        }
-        foreach (ImpactSubmission::with('impactCell:id,name')->orderByDesc('created_at')->limit(5)->get(['id', 'type', 'data', 'impact_cell_id']) as $s) {
+        foreach ($subQuery->with('impactCell:id,name')
+            ->orderByDesc('created_at')->limit(5)
+            ->get(['id', 'type', 'data', 'impact_cell_id']) as $s) {
             $preview = $s->data['full_name'] ?? $s->data['name'] ?? '—';
-            $items[] = ['id' => (string) $s->id, 'category' => 'submission', 'label' => $this->adminSubmissionTypeLabel($s->type) . ': ' . $preview, 'subtitle' => $s->impactCell?->name ?? '', 'href' => route('impact-submissions.show', $s->id)];
+            $items[] = [
+                'id'       => (string) $s->id,
+                'category' => 'submission',
+                'label'    => $this->adminSubmissionTypeLabel($s->type) . ': ' . $preview,
+                'subtitle' => $s->impactCell?->name ?? '',
+                'href'     => route('impact-submissions.show', $s->id),
+            ];
         }
-        foreach (User::orderByDesc('created_at')->limit(5)->get(['id', 'name', 'email']) as $u) {
-            $items[] = ['id' => (string) $u->id, 'category' => 'user', 'label' => $u->name, 'subtitle' => $u->email, 'href' => '/users'];
+
+        // Guests
+        if (($role === 'Impact_Leaders' || $role === 'Impact_Cell_Report') && $user->impact_cell_id) {
+            $cellIds = [$user->impact_cell_id];
+            $subIds = ImpactCell::where('parent_cell_id', $user->impact_cell_id)->pluck('id')->all();
+            $cellIds = array_merge($cellIds, $subIds);
+            foreach (Guest::whereIn('nearest_impact_cell_id', $cellIds)
+                ->orderByDesc('created_at')->limit(5)
+                ->get(['id', 'guest_name', 'phone']) as $g) {
+                $items[] = ['id' => (string) $g->id, 'category' => 'guest', 'label' => $g->guest_name ?: '(unnamed)', 'subtitle' => $g->phone ?? '', 'href' => route('guests.show', $g->id)];
+            }
+        } elseif ($role === 'Impact_Zonal_Coordinator') {
+            if (! empty($zonalIds)) {
+                foreach (Guest::whereIn('nearest_impact_cell_id', $zonalIds)
+                    ->orderByDesc('created_at')->limit(5)
+                    ->get(['id', 'guest_name', 'phone']) as $g) {
+                    $items[] = ['id' => (string) $g->id, 'category' => 'guest', 'label' => $g->guest_name ?: '(unnamed)', 'subtitle' => $g->phone ?? '', 'href' => route('guests.show', $g->id)];
+                }
+            }
+        } elseif ($group === 'followUpOfficer') {
+            foreach (Guest::where('follow_officer_id', $user->id)
+                ->orderByDesc('created_at')->limit(5)
+                ->get(['id', 'guest_name', 'phone']) as $g) {
+                $items[] = ['id' => (string) $g->id, 'category' => 'guest', 'label' => $g->guest_name ?: '(unnamed)', 'subtitle' => $g->phone ?? '', 'href' => route('guests.show', $g->id)];
+            }
         }
+
+        // Cells
+        if (($role === 'Impact_Leaders' || $role === 'Impact_Cell_Report') && $user->impact_cell_id) {
+            foreach (ImpactCell::where('id', $user->impact_cell_id)
+                ->orWhere('parent_cell_id', $user->impact_cell_id)
+                ->ordered()->limit(5)
+                ->get(['id', 'name']) as $c) {
+                $items[] = ['id' => (string) $c->id, 'category' => 'cell', 'label' => $c->name, 'subtitle' => 'Impact Cell', 'href' => route('impact-cells.show', $c->id)];
+            }
+        } elseif ($role === 'Impact_Zonal_Coordinator') {
+            // Reuse the cached $zonalIds set (already computed for the
+            // submissions branch above) instead of re-querying the pivot.
+            if (! empty($zonalIds)) {
+                foreach (ImpactCell::whereIn('id', $zonalIds)->ordered()->limit(5)->get(['id', 'name']) as $c) {
+                    $items[] = ['id' => (string) $c->id, 'category' => 'cell', 'label' => $c->name, 'subtitle' => 'Impact Cell', 'href' => route('impact-cells.show', $c->id)];
+                }
+            }
+        } elseif ($group === 'followUpOfficer' && $user->impact_cell_id) {
+            foreach (ImpactCell::where('id', $user->impact_cell_id)->get(['id', 'name']) as $c) {
+                $items[] = ['id' => (string) $c->id, 'category' => 'cell', 'label' => $c->name, 'subtitle' => 'Impact Cell', 'href' => route('impact-cells.show', $c->id)];
+            }
+        }
+
+        // Users — self only for non-broad roles (privacy: do not surface
+        // arbitrary users in the dashboard search of a cell-bound leader).
+        $items[] = [
+            'id'       => 'self-' . $user->id,
+            'category' => 'user',
+            'label'    => $user->name,
+            'subtitle' => $user->email,
+            'href'     => '/users',
+        ];
+
         return $items;
     }
 }

@@ -120,10 +120,17 @@ class RegisterInertiaRequest extends FormRequest
                 'uuid',
                 Rule::exists('impact_cells', 'id'),
                 // Required if-and-only-if Impact_Leaders is in roles[].
-                Rule::requiredIf(fn () => in_array('Impact_Leaders', (array) ($this->input('roles', [])), true)),
+                Rule::requiredIf(fn () => $this->requiresImpactLeader()),
+                // Phase 18 — one-credential-per-cell invariant. Self-edit
+                // ignore is irrelevant on the SIGNUP path (no $targetUser).
+                new \App\Rules\ImpactCellHasNoLiveLeader(),
             ],
-            'leader_name'            => ['nullable', 'string', 'max:255'],
-            'leader_phone'           => ['nullable', 'string', 'max:32'],
+            // Phase 23 — Impact Cell Leaders MUST supply their own contact
+            // data. The other 4 leadership-team fields (assistant_*,
+            // welfare_*) stay optional — Admin can fill them later from
+            // the cell's own page once the leader is in place.
+            'leader_name'            => ['nullable', 'string', 'max:255', Rule::requiredIf(fn () => $this->requiresImpactLeader())],
+            'leader_phone'           => ['nullable', 'string', 'max:32',  Rule::requiredIf(fn () => $this->requiresImpactLeader())],
             'assistant_name'         => ['nullable', 'string', 'max:255'],
             'assistant_phone'        => ['nullable', 'string', 'max:32'],
             'welfare_officer_name'   => ['nullable', 'string', 'max:255'],
@@ -137,8 +144,21 @@ class RegisterInertiaRequest extends FormRequest
             'roles.required'              => 'Pick at least one role.',
             'roles.*.in'                  => 'That role is not available for self-signup.',
             'impact_cell_id.required_if'  => 'Impact Cell Leaders must pick the cell they lead.',
+            'leader_name.required_if'     => 'Leader name is required for an Impact Leaders signup.',
+            'leader_phone.required_if'    => 'Leader phone is required for an Impact Leaders signup.',
             'impact_cell_id.exists'       => 'The selected Impact Cell does not exist.',
             'active_role.in'              => 'Active role must be one of the chosen roles.',
         ];
+    }
+
+    /**
+     * Phase 23 — single source of truth for "this signup requires an
+     * Impact_Leaders contact data" predicate. Called by the 3 rules
+     * in this FormRequest (impact_cell_id + leader_name + leader_phone)
+     * so renaming the role in 1 place reflects everywhere.
+     */
+    protected function requiresImpactLeader(): bool
+    {
+        return in_array('Impact_Leaders', (array) ($this->input('roles', [])), true);
     }
 }

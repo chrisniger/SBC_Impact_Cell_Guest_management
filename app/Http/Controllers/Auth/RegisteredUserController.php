@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\RegisterInertiaRequest;
 use App\Models\ImpactCell;
 use App\Models\User;
+use App\Rules\ImpactCellHasNoLiveLeader;
 use App\Support\RoleHelper;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use Spatie\Permission\Models\Role;
 
 /**
  * Phase 0 + Phase 13 — public signup controller.
@@ -64,6 +66,9 @@ class RegisteredUserController extends Controller
      */
     public function create(): Response
     {
+        // Phase 14 — guard rail. See ensureSignupRolesSeeded() for rationale.
+        $this->ensureSignupRolesSeeded();
+
         return Inertia::render('Auth/Register', [
             'rolesForSignup' => RoleHelper::signupVisibleRoles(),
             // Phase 13+ follow-up — public signup displays ONLY primary
@@ -95,9 +100,43 @@ class RegisteredUserController extends Controller
      */
     public function store(RegisterInertiaRequest $request): RedirectResponse
     {
+        // Phase 14 — guard rail. Note on ordering: in Laravel, the
+        // FormRequest is resolved by the IoC container BEFORE the
+        // controller body executes (FormRequest::__construct
+        // triggers validateResolved → authorize + prepareForValidation
+        // + rules). So this guard call runs AFTER FormRequest
+        // validation has already completed — NOT before. The guard's
+        // primary purpose still holds: it short-circuits BEFORE
+        // `$user->syncRoles($data['roles'])` does, which is where
+        // the unsustainable `RoleDoesNotExist` exception is raised.
+        // A truly pre-validation abort would require route middleware
+        // (Route::post('register', ...)->middleware('ensure.signup-roles'))
+        // — out of scope here.
+        $this->ensureSignupRolesSeeded();
+
         $data = $request->validated();
 
         $user = DB::transaction(function () use ($data) {
+            // Phase 18 — race-condition guard for the one-credential-per-cell
+            // invariant. The FormRequest rule has already run, but two
+            // simultaneous POSTs can both pass validation at T0 and both
+            // try to create a leader for the same cell at T1. Lock the
+            // candidate ImpactCell row inside the transaction so the
+            // check below is serialised, then re-check with the rule's
+            // query and throw the same friendly message on conflict.
+            if (! empty($data['impact_cell_id'] ?? null)
+                && in_array('Impact_Leaders', $data['roles'], true)) {
+                \App\Models\ImpactCell::where('id', $data['impact_cell_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (ImpactCellHasNoLiveLeader::hasLiveLeader((string) $data['impact_cell_id'])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'impact_cell_id' => ImpactCellHasNoLiveLeader::OCCUPIED_MESSAGE,
+                    ]);
+                }
+            }
+
             $user = User::create([
                 'name'           => $data['name'],
                 'email'          => $data['email'],
@@ -134,5 +173,55 @@ class RegisteredUserController extends Controller
         Auth::login($user);
 
         return redirect(route('dashboard', absolute: false));
+    }
+
+    /**
+     * Phase 14 — deploy-misconfig guard rail.
+     *
+     * Without this guard, an operator who runs `migrate` without
+     * `db:seed` (or someone who truncates the `roles` table for a
+     * test reset / fresh DB / partial restore) sees a 500 trace like
+     * `Spatie\Permission\Exceptions\RoleDoesNotExist` deep inside
+     * `User::syncRoles()` instead of a clean 503 with remediation
+     * guidance. Failing loudly here turns a deploy mistake into an
+     * obvious on-call page rather than a confusing user-facing 500.
+     *
+     * Called from BOTH `create()` AND `store()` — both surface this
+     * failure mode independently:
+     *   - `create()` — UX nicety so the form is never rendered in a
+     *     state where the role grid is silently empty / broken.
+     *   - `store()` — the critical guard, since a missing role would
+     *     otherwise throw inside the DB transaction and roll back
+     *     the user row invisibly. The guard ensures the 503 fires
+     *     BEFORE we even attempt `$user->syncRoles()`.
+     *
+     * Failure mode:
+     *   503 Service Unavailable
+     *   body: "Signup is temporarily unavailable: required roles are
+     *          not seeded: <missing>. Run `php artisan db:seed
+     *          --class=RolesAndPermissionsSeeder`."
+     *
+     * Why no in-memory cache? `Role::whereIn(...)` is one indexed
+     * lookup with a 2-element `IN` clause — sub-millisecond on
+     * MySQL/Postgres. Caching the result for N seconds would defeat
+     * the "fail loudly when seed is broken" intent if the cache is
+     * warm from before the deploy (the bug needs to surface AT the
+     * deploy, not be hidden).
+     */
+    private function ensureSignupRolesSeeded(): void
+    {
+        $present = Role::whereIn('name', RoleHelper::SIGNUP_VISIBLE_ROLES)
+            ->pluck('name')
+            ->all();
+
+        $missing = array_diff(RoleHelper::SIGNUP_VISIBLE_ROLES, $present);
+
+        abort_if(
+            ! empty($missing),
+            503,
+            'Signup is temporarily unavailable: required roles are not seeded: '
+                . implode(', ', $missing)
+                . '. Run `php artisan db:seed --class=RolesAndPermissionsSeeder`.'
+        );
     }
 }

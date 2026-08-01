@@ -72,8 +72,30 @@ class ImpactCellController extends Controller
             'leaderUsers' => fn ($q) => $q->orderBy('name'),
         ])->findOrFail($id);
 
+        // Phase 17 — Sub-cells editor payload. Only shown on Show page
+        // when the cell is itself primary AND the actor is admin (gated
+        // on the React side, but the server check is the source of truth).
+        // Filters out (a) self and (b) primaries that already have active
+        // sub-cells (the grandparent-trap rule: those can't legally be
+        // demoted to a sub-row of THIS primary without violating the
+        // 1-level hierarchy). N+1 is acceptable here because the dev-data
+        // set is ~69 cells; if seeded data scales up, replace with a
+        // single grouped query (sub-cell-count per primary).
+        $attachablePrims = [];
+        if ($cell->is_primary) {
+            $attachablePrims = ImpactCell::primary()
+                ->ordered()
+                ->where('id', '!=', $id)
+                ->get(['id', 'name'])
+                ->filter(fn (ImpactCell $c) => ! $c->subCells()->exists())
+                ->map(fn (ImpactCell $c) => ['id' => $c->id, 'name' => $c->name])
+                ->values()
+                ->all();
+        }
+
         return Inertia::render('ImpactCells/Show', [
-            'cell' => $cell,
+            'cell'             => $cell,
+            'attachablePrims'  => $attachablePrims,
         ]);
     }
 
@@ -106,16 +128,130 @@ class ImpactCellController extends Controller
         $data = $this->validateCell($request, $cell);
 
         try {
-            ImpactCell::hierarchyRulesOrThrow((bool) $data['is_primary'], $data['parent_cell_id'] ?? null);
+            // Pass `$cell` as the existing-row so hierarchyRulesOrThrow can
+            // reject the Phase 17 "grandparent trap" — demoting a primary
+            // that already has children to a sub-cell of another primary
+            // would silently produce a 3-level hierarchy.
+            ImpactCell::hierarchyRulesOrThrow((bool) $data['is_primary'], $data['parent_cell_id'] ?? null, $cell);
             ImpactCell::ensureParentIsPrimary($data['parent_cell_id'] ?? null);
         } catch (\DomainException $e) {
             return back()->withErrors(['hierarchy' => $e->getMessage()])->withInput();
         }
 
+        // Re-derive child's effective ordering when demoted. Sub-cells keep
+        // their `order` but are no longer root anchors — cleanup is left to
+        // admins via the Sub-cells editor card.
         $cell->update($data);
 
         return redirect()->route('impact-cells.index')
             ->with('success', "Updated cell {$cell->name}.");
+    }
+
+    /**
+     * GET /impact-cells/create — Administrator only (via ImpactCellPolicy).
+     *
+     * Renders the Inertia-driven Create page with the canonical list of
+     * primary cells so the Sub-cell parent picker is pre-populated server-
+     * side (no extra fetch). `activeRole` passed through for the same
+     * reason as Index/Show — admin chrome gates.
+     */
+    public function create(Request $request): Response
+    {
+        $this->authorize('create', ImpactCell::class);
+
+        return Inertia::render('ImpactCells/Create', [
+            'primaries'  => ImpactCell::primary()->ordered()->get(['id', 'name']),
+            'activeRole' => $request->user()?->activeRole(),
+        ]);
+    }
+
+    /**
+     * POST /impact-cells/{id}/attach-sub-cell
+     *
+     * Re-parents a candidate "child" cell so it sits under THIS primary.
+     * The child's is_primary flag flips false and parent_cell_id becomes
+     * THIS cell's id. Server-side guards:
+     *   - child cannot be self (no self-loops)
+     *   - child cannot already be a sub-cell of another primary (409)
+     *   - parent must authorize update (admin OR ICA)
+     *   - child must also authorize update (admin OR ICA) — both rows
+     *     change, so both gates must pass
+     */
+    public function attachSubCell(Request $request, string $id): RedirectResponse
+    {
+        $parent = ImpactCell::findOrFail($id);
+        $this->authorize('update', $parent);
+
+        $data = $request->validate([
+            'child_id' => ['required', 'uuid', 'exists:impact_cells,id', 'different:' . $id],
+        ]);
+
+        $child = ImpactCell::findOrFail($data['child_id']);
+        // Authorize on the child too — both rows change on attach.
+        $this->authorize('update', $child);
+
+        if ($child->parent_cell_id !== null) {
+            return back()->withErrors([
+                'child_id' => "Cell '{$child->name}' is already a sub-cell of another primary. Detach it first.",
+            ]);
+        }
+
+        // Grandparent trap: if CHILD currently has sub-cells of its own,
+        // attaching it as a sub-cell here would silently create a 3-level
+        // hierarchy. Block this here too (attachSubCell callers may not be
+        // going through validateCell()).
+        try {
+            ImpactCell::hierarchyRulesOrThrow(false, $parent->id, $child);
+            ImpactCell::ensureParentIsPrimary($parent->id);
+        } catch (\DomainException $e) {
+            return back()->withErrors(['hierarchy' => $e->getMessage()]);
+        }
+
+        $child->update([
+            'parent_cell_id' => $parent->id,
+            'is_primary'     => false,
+        ]);
+
+        return back()->with('success', "Attached '{$child->name}' under '{$parent->name}'.");
+    }
+
+    /**
+     * POST /impact-cells/{id}/detach-sub-cell
+     *
+     * Promotes an existing child back to a primary cell. The child's
+     * parent_cell_id is nulled and is_primary flipped true. Server-side
+     * guards:
+     *   - child must currently have THIS primary as its parent (409)
+     *   - parent + child both authorize update
+     *
+     * Note: per Phase 17 "fast-action, no modal" — there is NO confirm
+     * modal here. If admin accidentally clicks, re-attaching to the same
+     * primary is a single subsequent click.
+     */
+    public function detachSubCell(Request $request, string $id): RedirectResponse
+    {
+        $parent = ImpactCell::findOrFail($id);
+        $this->authorize('update', $parent);
+
+        $data = $request->validate([
+            'child_id' => ['required', 'uuid', 'exists:impact_cells,id'],
+        ]);
+
+        $child = ImpactCell::findOrFail($data['child_id']);
+        $this->authorize('update', $child);
+
+        if ($child->parent_cell_id !== $parent->id) {
+            return back()->withErrors([
+                'child_id' => "Cell '{$child->name}' is not a sub-cell of '{$parent->name}'.",
+            ]);
+        }
+
+        $child->update([
+            'parent_cell_id' => null,
+            'is_primary'     => true,
+        ]);
+
+        return back()->with('success', "Promoted '{$child->name}' to a primary cell.");
     }
 
     /**
@@ -175,7 +311,7 @@ class ImpactCellController extends Controller
             'welfare_officer_name' => ['nullable', 'string', 'max:255'],
             'welfare_officer_phone'=> ['nullable', 'string', 'max:32'],
 
-            'parent_cell_id'       => ['nullable', 'uuid', 'exists:impact_cells,id'],
+            'parent_cell_id'       => ['required_if:is_primary,false', 'nullable', 'uuid', 'exists:impact_cells,id'],
             'is_primary'           => ['required', 'boolean'],
             'order'                => ['nullable', 'integer', 'min:0'],
         ]);

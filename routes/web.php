@@ -37,10 +37,22 @@ Route::middleware('auth')->group(function () {
     // Phase 03 — Impact Cell CRUD (Implementation/04_Impact_Cell_Hierarchy.md).
     // Administrator-only via ImpactCellPolicy (created in Phase 04).
     Route::get   ('/impact-cells',                  [ImpactCellController::class, 'index'])->name('impact-cells.index');
+    // Phase 17 — `create` MUST be registered BEFORE `/{id}` so Laravel's
+    // first-match-wins routing doesn't dispatch GET /impact-cells/create
+    // into the show handler with id="create" (which would 404 on the UUID
+    // findOrFail). Same rule applies to the /create React route used by
+    // the admin "Add New Cell" button.
+    Route::get   ('/impact-cells/create',           [ImpactCellController::class, 'create'])->name('impact-cells.create');
     Route::get   ('/impact-cells/{id}',             [ImpactCellController::class, 'show'])->name('impact-cells.show');
     Route::post  ('/impact-cells',                  [ImpactCellController::class, 'store'])->name('impact-cells.store');
     Route::put   ('/impact-cells/{id}',             [ImpactCellController::class, 'update'])->name('impact-cells.update');
     Route::delete('/impact-cells/{id}',             [ImpactCellController::class, 'destroy'])->name('impact-cells.destroy');
+    // Phase 17 — admin-only re-parenting endpoints used by the Sub-cells
+    // editor card on Show.tsx. Both authorize ImpactCellPolicy::update
+    // on BOTH the parent and the child (both rows mutate, both gates must
+    // pass). Fast-action: no confirm modal.
+    Route::post  ('/impact-cells/{id}/attach-sub-cell', [ImpactCellController::class, 'attachSubCell'])->name('impact-cells.attach-sub-cell');
+    Route::post  ('/impact-cells/{id}/detach-sub-cell', [ImpactCellController::class, 'detachSubCell'])->name('impact-cells.detach-sub-cell');
 
     // Phase 04 — Guest CRUD + column-level access (Implementation/Phase_04_Guest_Records_Core.md).
     // Admin / FollowUpOfficer create via GuestPolicy; column-level access
@@ -135,7 +147,7 @@ Route::middleware('auth')->group(function () {
     Route::post  ('/impact-submissions',              [\App\Http\Controllers\ImpactSubmissionController::class, 'store'])->name('impact-submissions.store');
     Route::get   ('/impact-submissions/{id}',         [\App\Http\Controllers\ImpactSubmissionController::class, 'show'])->name('impact-submissions.show');
     Route::get   ('/impact-submissions/search/json',  [\App\Http\Controllers\ImpactSubmissionController::class, 'search'])->name('impact-submissions.search');
-    Route::get   ('/my-reports',                      [\App\Http\Controllers\ImpactSubmissionController::class, 'myReports'])->name('impact-submissions.my-reports');
+    Route::get   ('/my-reports',                      [\App\Http\Controllers\ImpactSubmissionController::class, 'mySubmissions'])->name('impact-submissions.my-reports');
     Route::get   ('/soul-search',                     [\App\Http\Controllers\ImpactSubmissionController::class, 'soulSearch'])->name('impact-submissions.soul-search');
 });
 

@@ -12,7 +12,6 @@ import ViewOnlyBanner from '@/Components/ViewOnlyBanner';
 import FooterCard from '@/Components/FooterCard';
 import GlobalSearch, { SearchResult } from '@/Components/GlobalSearch';
 import InlineImpactStatusPill from '@/Components/InlineImpactStatusPill';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
 import RecentActivityGrid, { RecentActivityTile } from '@/Components/RecentActivityGrid';
 import RecentRegistrationsFeed, { RegistrationItem } from '@/Components/RecentRegistrationsFeed';
 import SystemOverviewPanel, { SystemOverviewStats } from '@/Components/SystemOverviewPanel';
@@ -1021,7 +1020,7 @@ function LeaderDashboard({
                         href={route('impact-submissions.my-reports')}
                         className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
                     >
-                        View all my reports
+                        View all my submissions
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
                             <path d="M5 12h14M12 5l7 7-7 7" />
                         </svg>
@@ -1231,7 +1230,7 @@ function ImpactCellAdminDashboard({
                     />
                     <CrossCellFeed
                         title="Zonal Coordinator Activity"
-                        subtitle="Authors: Impact_Zonal_Cordinator only"
+                        subtitle="Authors: Impact_Zonal_Coordinator only"
                         rows={recentZonalSubs}
                         hideAuthorRole
                     />

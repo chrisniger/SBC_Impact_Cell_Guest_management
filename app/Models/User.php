@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\RoleHelper;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -12,8 +13,8 @@ use Spatie\Permission\Traits\HasRoles;
 
 /**
  * @property string|null $active_role
- * @property \Illuminate\Support\Carbon|null $last_seen_at
- * @property string|null $impact_cell_id        Phase 13 — assigned cell (for Impact_Leaders).
+ * @property \Illuminate\Support\Carbon|null $last_seen_at     * @property string|null $impact_cell_id        Phase 13 — assigned cell (for Impact_Leaders).
+
  */
 class User extends Authenticatable
 {
@@ -116,5 +117,15 @@ class User extends Authenticatable
     public function assignedImpactCell(): BelongsTo
     {
         return $this->belongsTo(ImpactCell::class, 'impact_cell_id');
+    }
+
+    /**
+     * Impact Cells covered by an Impact_Zonal_Coordinator.
+     * Impact_Leaders continue to use assignedImpactCell() above because
+     * their assignment is intentionally single-cell.
+     */
+    public function zonalImpactCells(): BelongsToMany
+    {
+        return $this->belongsToMany(ImpactCell::class, 'impact_cell_user');
     }
 }

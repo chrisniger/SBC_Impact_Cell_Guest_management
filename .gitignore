@@ -26,3 +26,7 @@ Thumbs.db
 # Windows reserved filename artifact (breaks `git add -A` on Win). Safe to ignore.
 /nul
 /storage/imp01_*
+
+# Tool/dependency noise — never commit.
+/.freebuff
+/scripts/.smoke_phase17_node_modules

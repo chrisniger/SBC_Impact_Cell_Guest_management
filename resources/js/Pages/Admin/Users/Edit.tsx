@@ -29,6 +29,7 @@ interface AdminUsersEditPageProps {
         // carry one; the Edit page's select reads this value as the
         // dropdown's pre-selected option.
         impact_cell_id: string | null;
+        zonal_impact_cell_ids: string[];
     };
     rolesForNew: string[];
     // Phase 13 — full cell list for the "Assigned Impact Cell" select.
@@ -94,11 +95,12 @@ export default function AdminUsersEditPage({
         // list reads "— No cell —" via select placeholder.
         impact_cell_id: user.impact_cell_id ?? '',
         active_role: user.active_role ?? '',
+        zonal_impact_cell_ids: user.zonal_impact_cell_ids ?? [],
     });
 
-    // Admin-only "Impact_Leaders needs a cell" hint mirroring the
-    // controller's assertLeaderHasCell() server-side check.
+    // Role-specific cell requirements mirror the controller's server-side checks.
     const needsAssignedCell = data.roles.includes('Impact_Leaders');
+    const needsZonalCells = data.roles.includes('Impact_Zonal_Coordinator');
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -115,6 +117,21 @@ export default function AdminUsersEditPage({
         if (! next.includes(data.active_role)) {
             setData('active_role', next[0] ?? '');
         }
+        if (! next.includes('Impact_Leaders')) {
+            setData('impact_cell_id', '');
+        }
+        if (! next.includes('Impact_Zonal_Coordinator')) {
+            setData('zonal_impact_cell_ids', []);
+        }
+    };
+
+    const toggleZonalCell = (cellId: string) => {
+        setData(
+            'zonal_impact_cell_ids',
+            data.zonal_impact_cell_ids.includes(cellId)
+                ? data.zonal_impact_cell_ids.filter((id) => id !== cellId)
+                : [...data.zonal_impact_cell_ids, cellId],
+        );
     };
 
     const onRestore = () => {
@@ -333,7 +350,7 @@ export default function AdminUsersEditPage({
                         <InputError message={errors.active_role} />
                     </div>
 
-                    {/* Assigned Impact Cell — Phase 13.
+                    {needsAssignedCell && (/* Assigned Impact Cell — Phase 13.
                       * Required when Impact_Leaders is in roles[] (server
                       * checks again via assertLeaderHasCell). Same shape
                       * as the public signup cell picker but with an
@@ -346,7 +363,7 @@ export default function AdminUsersEditPage({
                       * AFTER the active-role dropdown because admin
                       * edits typically start at the role layer and the
                       * audit history (active role pinned by admin) is
-                      * more visible up top. */}
+                      * more visible up top. */
                     <div className="space-y-1.5">
                         <InputLabel htmlFor="users-edit-impact-cell" value="Assigned Impact Cell" />
                         <select
@@ -375,6 +392,32 @@ export default function AdminUsersEditPage({
                         </p>
                         <InputError message={errors.impact_cell_id} />
                     </div>
+                    )}
+
+                    {needsZonalCells && (
+                        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20">
+                            <InputLabel value="Impact Cells covered by this Zonal Coordinator" />
+                            <div className="grid max-h-60 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2" data-testid="users-edit-zonal-cells">
+                                {cellsList.map((cell) => {
+                                    const checked = data.zonal_impact_cell_ids.includes(cell.id);
+                                    return (
+                                        <label key={cell.id} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${checked ? 'border-amber-300 bg-amber-100/70 dark:border-amber-700 dark:bg-amber-900/40' : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800'}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleZonalCell(cell.id)}
+                                                className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 dark:border-gray-700 dark:bg-gray-900"
+                                                data-testid={`users-edit-zonal-cell-${cell.id}`}
+                                            />
+                                            <span className="truncate text-gray-800 dark:text-gray-200">{cell.name}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">Required for Zonal Coordinators. Select one or more cells.</p>
+                            <InputError message={errors.zonal_impact_cell_ids} />
+                        </div>
+                    )}
 
                     {/* Footer */}
                     <div className="flex items-center justify-end gap-2 pt-2">
@@ -387,7 +430,7 @@ export default function AdminUsersEditPage({
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
-                            disabled={processing || data.roles.length === 0}
+                            disabled={processing || data.roles.length === 0 || (needsZonalCells && data.zonal_impact_cell_ids.length === 0) || (needsAssignedCell && !data.impact_cell_id)}
                             data-testid="users-edit-submit"
                         >
                             {processing ? 'Saving…' : 'Save changes'}

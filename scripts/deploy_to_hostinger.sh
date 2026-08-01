@@ -142,6 +142,22 @@ artisan_round() {
         php artisan migrate --force --no-interaction" \
         || die "migrate --force failed"
 
+    # Phase 14 — deploy-misconfig smoke gate. Runs `php artisan roles:audit --json`
+    # IMMEDIATELY after the migrations from the step above apply, BEFORE the
+    # cache trio (so any deploy-misconfig surfaces before we burn 30+ seconds
+    # on config:cache/route:cache/view:cache). The audit hard-fails the
+    # deploy with exit code != 0 if:
+    #   - any of the 10 canonical RoleHelper::ROLE_NAMES rows are missing
+    #     from the `roles` table on guard 'web',
+    #   - any expected-name row lives under a non-`web` guard_name, OR
+    #   - SIGNUP_VISIBLE_ROLES has drifted from ROLE_NAMES (e.g. a future
+    #     PR typos one of the names — the original today-2026-07-31 incident
+    #     was exactly this kind of drift, see
+    #     app/Support/RoleHelper.php docblock + database/migrations/
+    #     2026_07_31_150000_fix_impact_zonal_typo_in_roles_table.php).
+    ssh "$HOST_SSH" "cd $APP_PATH && php artisan roles:audit --json" \
+        || die "roles:audit reported unhealthy after migrate — deploy-misconfig. Read the JSON output above for missing roles / guard mismatch / SIGNUP_VISIBLE_ROLES drift, and re-run \`php artisan db:seed --class=RolesAndPermissionsSeeder\` or fix the constant drift as needed. Do NOT mark the deploy green until this passes."
+
     ssh "$HOST_SSH" "cd $APP_PATH && \
         php artisan config:cache && \
         php artisan route:cache && \

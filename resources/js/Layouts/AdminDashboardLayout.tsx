@@ -3,7 +3,6 @@ import { Link, router, usePage } from '@inertiajs/react';
 import AdminSidebar from '@/Components/AdminSidebar';
 import ApplicationLogo from '@/Components/ApplicationLogo';
 import GlobalSearch, { SearchResult } from '@/Components/GlobalSearch';
-import LanguageSwitcher from '@/Components/LanguageSwitcher';
 import RoleBadge from '@/Components/RoleBadge';
 import ThemeToggle from '@/Components/ThemeToggle';
 
@@ -57,7 +56,6 @@ type AdminAuthProps = Record<string, any> & {
  *   - hamburger toggle        (Phase 06f, `< lg` only)
  *   - global search input     (HeadlessUI Combobox, `>= lg` only)
  *   - theme toggle            (Phase 06e)
- *   - language switcher       (HeadlessUI Listbox)
  *   - role badge
  *   - log-out button
  *
@@ -500,12 +498,8 @@ export default function AdminDashboardLayout({
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Phase 06e — Light/Dark theme toggle.
-                            Lives next to LanguageSwitcher so chrome is grouped. */}
+                        {/* Phase 06e — Light/Dark theme toggle. */}
                         <ThemeToggle />
-
-                        {/* Phase 06d.2 — HeadlessUI Listbox replaces the placeholder; same testid preserved */}
-                        <LanguageSwitcher />
 
                         <RoleBadge role={user.activeRole} />
 

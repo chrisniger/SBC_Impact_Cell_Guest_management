@@ -20,7 +20,7 @@ final class RoleHelper
     /**
      * 3 user groups — derived from Implementation/03_Three_User_Groups.md.
      */
-    public const GROUP_IMPACT_CELL       = ['Impact_Leaders', 'Impact_Cell_Admin', 'Impact_Cell_Report', 'Impact_Zonal_Cordinator'];
+    public const GROUP_IMPACT_CELL       = ['Impact_Leaders', 'Impact_Cell_Admin', 'Impact_Cell_Report', 'Impact_Zonal_Coordinator'];
     public const GROUP_FOLLOW_UP_OFFICER = ['FollowUpOfficer', 'Follow_UP_Admin'];
     public const GROUP_FOLLOW_UP_TEAM    = ['Follow_UP', 'Follow_UP_View_Only'];
 
@@ -35,6 +35,15 @@ final class RoleHelper
      *
      * Adding a new role? Append it here AND to the seeder. Removing one?
      * Drop it here and verify no seeded user still holds it.
+     *
+     * Phase 14 (2026-07-31): the 10th entry was previously spelled
+     * 'Impact_Zonal_Coordinator' (missing the second 'o' — "Cordinator").
+     * That spelled differently from `SIGNUP_VISIBLE_ROLES[1]` below and
+     * caused `User::syncRoles(['Impact_Zonal_Coordinator'])` on /register
+     * to throw `Spatie\Permission\Exceptions\RoleDoesNotExist` because
+     * the seeder inserted under the typo'd spelling while signup posted
+     * the correct spelling. Fixed in this branch + matched with data
+     * migration `2026_07_31_150000_fix_impact_zonal_typo_in_roles_table.php`.
      */
     public const ROLE_NAMES = [
         'Administrator',
@@ -46,7 +55,7 @@ final class RoleHelper
         'Impact_Leaders',
         'Impact_Cell_Admin',
         'Impact_Cell_Report',
-        'Impact_Zonal_Cordinator',
+        'Impact_Zonal_Coordinator',
     ];
 
     /**
@@ -61,8 +70,8 @@ final class RoleHelper
      *                               cell-detail seed (leadership team
      *                               roster) on submit.
      *   - `Impact_Zonal_Coordinator` — zone-wide overseer; no cell
-     *                               binding at signup (zone is assigned
-     *                               by Admin post-signup).
+     *                                binding at signup (zone is assigned
+     *                                by Admin post-signup).
      *
      * FollowUpOfficer / Follow_UP_Admin / Follow_UP / Follow_UP_View_Only
      * were intentionally removed from public signup; Admin still assigns
@@ -74,6 +83,12 @@ final class RoleHelper
      *
      * Single source of truth: if the public signup matrix changes,
      * change it here ONLY (no separate constants in 2 files to drift).
+     *
+     * Phase 14 invariant (verified by `php artisan roles:audit`):
+     * every entry in SIGNUP_VISIBLE_ROLES MUST also appear in
+     * ROLE_NAMES — otherwise the seeder creates no row for a name
+     * that the signup form ships, and `User::syncRoles(...)` will
+     * throw `RoleDoesNotExist` at /register time.
      */
     public const SIGNUP_VISIBLE_ROLES = [
         'Impact_Leaders',
@@ -94,7 +109,7 @@ final class RoleHelper
     public const ROLE_ADMIN              = 'Administrator';
     public const ROLE_SUPERVISOR         = 'Supervisor';
     public const ROLE_IMPACT_CELL_ADMIN  = 'Impact_Cell_Admin';
-    public const ROLE_IMPACT_ZONAL       = 'Impact_Zonal_Cordinator';
+    public const ROLE_IMPACT_ZONAL       = 'Impact_Zonal_Coordinator';
 
     /** True iff the role is the cross-cell supervisor (Phase 09). */
     public static function isImpactCellAdmin(?string $role): bool
@@ -184,7 +199,7 @@ final class RoleHelper
         }
 
         if ($field === 'follow_officer_id') {
-            return $role === 'Follow_UP_Admin' || $role === 'Impact_Zonal_Cordinator';
+            return $role === 'Follow_UP_Admin' || $role === 'Impact_Zonal_Coordinator';
         }
 
         $g = self::groupOf($role);

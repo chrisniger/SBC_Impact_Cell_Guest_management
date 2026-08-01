@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * @property string      $id
@@ -84,6 +85,12 @@ class ImpactCell extends Model
         return $this->hasMany(User::class, 'impact_cell_id');
     }
 
+    /** Users assigned to this cell as zonal coordinators. */
+    public function zonalUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'impact_cell_user');
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Hierarchy validators — mirror Implementation/04 server/lib/impact-cells.js
     // ─────────────────────────────────────────────────────────────────────
@@ -91,8 +98,14 @@ class ImpactCell extends Model
     /**
      * Returns the array of errors (use for bulk validation in Form Requests,
      * or call hierarchyRulesOrThrow() to use the throw-based contract).
+     *
+     * `?ImpactCell $existing` is OPTIONAL — pass it for UPDATE / DEMOTE flows
+     * so the model can also enforce "a primary cell that already has active
+     * sub-cells cannot be demoted to a sub-cell itself" (the Phase 17
+     * "grandparent trap" guard). For CREATE flows (no existing row yet),
+     * leave it null and the demo guard is silently skipped.
      */
-    public static function hierarchyRules(bool $isPrimary, ?string $parentCellId): array
+    public static function hierarchyRules(bool $isPrimary, ?string $parentCellId, ?self $existing = null): array
     {
         // Normalize empty string to null — form submissions often send '' for unset fields.
         $parentCellId = ($parentCellId === '' || $parentCellId === null) ? null : $parentCellId;
@@ -104,13 +117,22 @@ class ImpactCell extends Model
         if (! $isPrimary && $parentCellId === null) {
             $errors[] = 'A non-primary cell must have a parent.';
         }
+        // Phase 17 — grandparent-trap guard. If we're demoting an existing
+        // primary with its own sub-cells to a sub-cell itself, we'd silently
+        // create grandchildren under a sub-cell (3-level hierarchy), which
+        // Phase 13b explicitly forbade ("1-level hierarchy"). Demoting is fine
+        // ONLY if the primary currently has no children — admin must detach
+        // or delete them first.
+        if ($existing !== null && ! $isPrimary && $existing->is_primary && $existing->subCells()->exists()) {
+            $errors[] = 'A primary cell with active sub-cells cannot be demoted to a sub-cell. Detach or delete its children first.';
+        }
         return $errors;
     }
 
     /** Throw-based variant — used by controllers so all hierarchy errors flow through one catch. */
-    public static function hierarchyRulesOrThrow(bool $isPrimary, ?string $parentCellId): void
+    public static function hierarchyRulesOrThrow(bool $isPrimary, ?string $parentCellId, ?self $existing = null): void
     {
-        $errors = self::hierarchyRules($isPrimary, $parentCellId);
+        $errors = self::hierarchyRules($isPrimary, $parentCellId, $existing);
         if ($errors !== []) {
             throw new \DomainException(implode(' ', $errors));
         }

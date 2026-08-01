@@ -3,12 +3,23 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // These tests exercise authentication state, not the CSRF middleware.
+        // Disable only CSRF here so the raw POST requests reach the login and
+        // logout controllers; browser/Inertia requests still use CSRF normally.
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+    }
 
     public function test_login_screen_can_be_rendered(): void
     {

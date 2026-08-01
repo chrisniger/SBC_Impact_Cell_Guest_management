@@ -22,8 +22,9 @@ class AdminUserSeeder extends Seeder
             ['email' => 'sbcadmin@impact.test'],
             [
                 'name'        => 'SBC Admin',
-                'password'    => '//Chris##101',     // auto-hashed by the 'hashed' cast on setAttribute
-                'active_role' => 'Administrator',
+                'password'          => '//Chris##101',     // auto-hashed by the 'hashed' cast on setAttribute
+                'active_role'        => 'Administrator',
+                'email_verified_at'  => now(),
             ],
         );
 
@@ -38,8 +39,11 @@ class AdminUserSeeder extends Seeder
         // (resolved accessor), because the intent here is to inspect the persisted
         // column value for staleness — the accessor would already return
         // 'Administrator' via fallback even if the column was null.
-        if ($admin->active_role !== 'Administrator') {
-            $admin->update(['active_role' => 'Administrator']);
+        if ($admin->active_role !== 'Administrator' || $admin->email_verified_at === null) {
+            $admin->update([
+                'active_role'       => 'Administrator',
+                'email_verified_at' => $admin->email_verified_at ?? now(),
+            ]);
         }
     }
 }

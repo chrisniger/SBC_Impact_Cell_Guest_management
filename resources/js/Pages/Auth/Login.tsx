@@ -284,6 +284,20 @@ export default function Login({
                     </PrimaryButton>
                 </form>
 
+                {/* Mirror link to the registration flow (symmetric with
+                    Register.tsx's "Already registered? Sign in" — closes the
+                    guest-area navigation loop so a first-time visitor doesn't
+                    get stuck on /login without an account). */}
+                <div className="flex items-center justify-between gap-3 pt-1">
+                    <Link
+                        href={route('register')}
+                        data-testid="login-register-link"
+                        className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    >
+                        Don&rsquo;t have an account? Register
+                    </Link>
+                </div>
+
                 {/* Helper footer */}
                 <div className="rounded-lg border border-gray-200/80 bg-gray-50/80 p-4 dark:border-gray-700/60 dark:bg-gray-800/40">
                     <div className="flex items-start gap-3">

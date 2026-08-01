@@ -22,7 +22,7 @@ use Inertia\Response;
  * Role gate (single source of truth via RoleHelper):
  *   - Administrator                       → any primary
  *   - impactCell group (Impact_Leaders / Impact_Cell_Admin /
- *                       Impact_Cell_Report / Impact_Zonal_Cordinator) → see Phase 07 § 5 spec
+ *                       Impact_Cell_Report / Impact_Zonal_Coordinator) → see Phase 07 § 5 spec
  *   - Everyone else                       → 403
  *
  * Impact_Leaders get a column-level gate on /leadership-board/{cellId}:
@@ -55,32 +55,41 @@ class LeadershipBoardController extends Controller
             abort(403, 'You do not have access to this leadership board.');
         }
 
-        $cell = ImpactCell::with('subCells')->findOrFail($cellId);
+        // Phase 13b — every cell is a primary; the eager `subCells` load is
+        // dead weight (would always return []). The flat-cell lookup below
+        // uses `collect([$cell])` as a single-tile synthetic $subCells.
+        $cell = ImpactCell::findOrFail($cellId);
 
         if (! $cell->is_primary) {
             abort(422, 'Leadership board requires a primary cell.');
         }
 
-        // ── COLUMN-LEVEL GATE for Impact_Leaders (spec: "assigned to a sub-cell under this primary") ──
-        // No users.impact_cell_id column exists; we infer assignment from submissions.
-        // Spec: "Impact Leader assigned to a sub-cell under this primary: this primary."
-        // We admit if they have ≥1 submission targeting a sub-cell of this primary.
+        // ── COLUMN-LEVEL GATE for Impact_Leaders ──
+        // Phase 13b flipped the world to flat-cell: every cell is a primary,
+        // parent_cell_id is NULL across the board. The pre-13b gate checked
+        // "must have submissions targeting a sub-cell of this primary" — that
+        // branch can never be satisfied today (subCells() is always empty),
+        // and Impact_Leaders were being 403'd off *every* primary they own.
+        //
+        // Flat-cell semantically equivalent: an Impact Leader is "assigned to"
+        // a primary if EITHER they are explicitly assigned via users.impact_cell_id
+        // OR they have any submission that targets the primary directly.
         if ($role === 'Impact_Leaders') {
-            $subCellIds = $cell->subCells()->pluck('id')->all();
-            if ($subCellIds === []) {
-                abort(403, 'This primary has no sub-cells you can view.');
-            }
+            $isAssigned    = ($user->impact_cell_id ?? null) === $cellId;
             $hasSubmission = ImpactSubmission::where('user_id', $user->id)
-                ->whereIn('impact_cell_id', $subCellIds)
+                ->where('impact_cell_id', $cellId)
                 ->exists();
-            if (! $hasSubmission) {
+
+            if (! $isAssigned && ! $hasSubmission) {
                 abort(403, 'You are not assigned to this primary.');
             }
         }
 
-        $subCells = $cell->subCells()->ordered()->get();
-
-        return response()->json($this->buildBoardData($cell, $subCells));
+        // Phase 13b — flat-cell world. The primary IS its own (and only) tile;
+        // pass it as a single-element collection so buildBoardData() computes
+        // members / souls / childbirths / report-status against direct
+        // submissions to this primary (was: against sub-cells).
+        return response()->json($this->buildBoardData($cell, collect([$cell])));
     }
 
     /**
@@ -97,31 +106,32 @@ class LeadershipBoardController extends Controller
             abort(403, 'You do not have access to leadership boards.');
         }
 
-        // IMPACT_LEADERS DATA-LEAK FIX: filter the primary list to ONLY the
-        // primaries whose sub-cells the leader has submitted under. Otherwise
-        // a leader who happens to have an Impact_Leaders role would get the
-        // entire system tile grid dumped to their browser.
+        // IMPACT_LEADERS DATA-LEAK FIX (Phase 13b flat-cell variant):
+        // Filter the primary list to ONLY the primaries the leader is
+        // legitimately bound to. In the flat-cell world this union is:
+        //   (a) the cell assigned to the leader via users.impact_cell_id
+        //   (b) every primary they have any submission against directly.
+        // (Pre-13b this also walked up `parent_cell_id` to admit sub-cell
+        //  assignments; that join is dead code after Phase 13b's flatten
+        //  migration which nulls every parent's parent_cell_id.)
         if ($role === 'Impact_Leaders') {
-            $userSubCellIds = ImpactSubmission::where('user_id', $user->id)
+            $userSubmissionPrimaryIds = ImpactSubmission::where('user_id', $user->id)
                 ->whereNotNull('impact_cell_id')
                 ->pluck('impact_cell_id')
-                ->unique()
                 ->all();
 
-            $userPrimaryIds = $userSubCellIds === []
-                ? []
-                : ImpactCell::whereIn('id', $userSubCellIds)
-                    ->whereNotNull('parent_cell_id')
-                    ->pluck('parent_cell_id')
-                    ->unique()
-                    ->values()
-                    ->all();
+            $merged = $userSubmissionPrimaryIds;
+            if (! empty($user->impact_cell_id)) {
+                $merged[] = $user->impact_cell_id;
+            }
+
+            $userPrimaryIds = array_values(array_unique(array_filter($merged)));
 
             $primaries = $userPrimaryIds === []
                 ? collect()
                 : ImpactCell::primary()->whereIn('id', $userPrimaryIds)->ordered()->get();
         } else {
-            // Administrator / Impact_Cell_Admin / Impact_Cell_Report / Impact_Zonal_Cordinator → all primaries
+            // Administrator / Impact_Cell_Admin / Impact_Cell_Report / Impact_Zonal_Coordinator → all primaries
             $primaries = ImpactCell::primary()->ordered()->get();
         }
 
@@ -133,9 +143,13 @@ class LeadershipBoardController extends Controller
         // without caching today, will collapse to 1 query once 5-min
         // DashboardCache lands in a later phase.
         $boards = $primaries->map(function (ImpactCell $primary) {
+            // Phase 13b — see show(): the primary is its own tile in the
+            // flat-cell world. Passing `[primary]` here keeps the per-tile
+            // stat math (members / souls / childbirths / report status)
+            // computing against direct submissions to this primary.
             return [
                 'cellId' => $primary->id,
-                'board'  => $this->buildBoardData($primary, $primary->subCells()->ordered()->get()),
+                'board'  => $this->buildBoardData($primary, collect([$primary])),
             ];
         })->values()->all();
 

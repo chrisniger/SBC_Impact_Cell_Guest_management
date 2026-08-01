@@ -51,11 +51,20 @@ class ImpactSubmissionController extends Controller
         if (! in_array($type, self::TYPES, true)) $type = 'member';
 
         $cells = ImpactCell::select('id', 'name')->orderBy('name')->get();
+        $user = $request->user();
+        $activeRole = $user?->activeRole();
+        $assignedCell = $activeRole === 'Impact_Leaders'
+            ? $user?->assignedImpactCell
+            : null;
 
         return Inertia::render('ImpactSubmissions/Create', [
-            'type'       => $type,
-            'cells'      => $cells,
-            'activeRole' => $request->user()?->activeRole(),
+            'type'         => $type,
+            'cells'        => $cells,
+            'activeRole'   => $activeRole,
+            // Impact_Leaders are bound to the cell chosen at registration.
+            // The report form renders this as read-only instead of offering
+            // a second, potentially conflicting cell selector.
+            'assignedCell' => $assignedCell?->only(['id', 'name']),
         ]);
     }
 
@@ -67,6 +76,13 @@ class ImpactSubmissionController extends Controller
 
         if ($role !== 'Administrator' && $group !== 'impactCell') {
             abort(403, 'Only Impact Cell leaders can submit.');
+        }
+
+        // Every submission made by an Impact Leader is attributed to the
+        // cell assigned during registration. Ignore any client-provided
+        // value so the UI rule is also enforced for hand-crafted requests.
+        if ($role === 'Impact_Leaders') {
+            $request->merge(['impact_cell_id' => $user->impact_cell_id]);
         }
 
         $validated = $request->validate([
@@ -178,24 +194,45 @@ class ImpactSubmissionController extends Controller
         }
     }
 
-    public function myReports(Request $request): Response
+    public function mySubmissions(Request $request): Response
     {
         $user = $request->user();
         $role = $user?->activeRole();
         $group = RoleHelper::groupOf($role);
 
+        // Phase 16 — chip filter via `?type=` query, validated against self::TYPES.
+        // Invalid values silently fall back to "all" so a hand-crafted URL like
+        // `?type=banana` doesn't 500; the React chip row reads `activeType` to
+        // decide which chip is highlighted. `: null` (after the in_array check)
+        // means "All" is selected — the row dropdown stays valid for that case.
+        $requestedType = (string) $request->query('type', '');
+        $activeType = in_array($requestedType, self::TYPES, true) ? $requestedType : null;
+
         $query = ImpactSubmission::with(['impactCell:id,name'])
             ->orderByDesc('created_at');
 
         if (RoleHelper::isImpactCellAdmin($role)) {
+            // Cross-cell admin scope: every submission by any user whose
+            // active_role ∈ GROUP_IMPACT_CELL.
             $query->whereHas('user', fn ($q) => $q->whereIn('active_role', RoleHelper::GROUP_IMPACT_CELL));
         } elseif ($group === 'impactCell') {
+            // Per-user scope (own submissions only).
             $query->forUser($user->id);
         }
 
-        return Inertia::render('ImpactSubmissions/MyReports', [
-            'reports'    => $query->paginate(20),
-            'activeRole' => $role,
+        if ($activeType !== null) {
+            // Phase 16 — narrow to the chip type. scopeOfType is defined on
+            // the model (`app/Models/ImpactSubmission.php` line 40).
+            $query->ofType($activeType);
+        }
+
+        return Inertia::render('ImpactSubmissions/MySubmissions', [
+            // Phase 16 — prop renamed `reports` → `submissions`. The query
+            // pagination preserves the active `?type=` via `withQueryString()`
+            // so chip+page round-trips cleanly across paginated URLs.
+            'submissions' => $query->paginate(20)->withQueryString(),
+            'activeRole'  => $role,
+            'activeType'  => $activeType,
         ]);
     }
 }

@@ -158,7 +158,7 @@ function resolveOwnerSection(activeRole: string | null, activeGroup: string | nu
     // groupOf('Impact_Cell_Admin') === 'impactCell' — the supervisor is technically
     // a member of the impactCell bucket but with widened scope.
     if (activeRole === 'Impact_Cell_Admin') return 'impactCellAdmin';
-    if (activeRole === 'Impact_Zonal_Cordinator') return 'impactZonal';
+    if (activeRole === 'Impact_Zonal_Coordinator') return 'impactZonal';
     if (activeGroup === 'impactCell')   return 'impactCell';
     if (activeGroup === 'followUpOfficer') return 'followUpOfficer';
     if (activeGroup === 'followUpTeam') return 'followUpTeam';

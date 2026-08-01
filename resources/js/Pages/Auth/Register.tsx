@@ -90,10 +90,12 @@ export default function Register({
         const next = data.roles.includes(role)
             ? data.roles.filter((r) => r !== role)
             : [...data.roles, role];
-        setData('roles', next);
-        if (! next.includes(data.active_role)) {
-            setData('active_role', next[0] ?? '');
-        }
+        setData({
+            roles: next,
+            active_role: next.includes(data.active_role)
+                ? data.active_role
+                : (next[0] ?? ''),
+        });
     };
 
     return (
@@ -300,6 +302,7 @@ export default function Register({
                                         placeholder="Adebayo Smith"
                                         error={errors.leader_name}
                                         inputClassName="bg-white dark:bg-gray-800"
+                                        required
                                     />
                                     <Field
                                         id="leader_phone"
@@ -309,6 +312,7 @@ export default function Register({
                                         placeholder="+234 800 000 0001"
                                         error={errors.leader_phone}
                                         inputClassName="bg-white dark:bg-gray-800"
+                                        required
                                     />
                                     <Field
                                         id="assistant_name"
@@ -367,6 +371,7 @@ export default function Register({
                     <div className="flex items-center justify-between gap-3 pt-1">
                         <Link
                             href={route('login')}
+                            data-testid="register-login-link"
                             className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300"
                         >
                             Already registered? Sign in

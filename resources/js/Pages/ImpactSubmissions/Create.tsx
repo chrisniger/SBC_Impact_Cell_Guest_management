@@ -3,7 +3,13 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { FormEventHandler, ReactNode, useState } from 'react';
 
 interface Cell { id: string; name: string; }
-interface CreatePageProps extends Record<string, any> { type: string; cells: Cell[]; activeRole: string | null; errors: Record<string, string>; }
+interface CreatePageProps extends Record<string, any> {
+    type: string;
+    cells: Cell[];
+    activeRole: string | null;
+    assignedCell: Cell | null;
+    errors: Record<string, string>;
+}
 
 const TABS = ['member', 'report', 'childbirth', 'soul'] as const;
 const LABELS: Record<string, string> = {
@@ -22,7 +28,7 @@ const TAB_ICONS: Record<string, ReactNode> = {
 
 export default function Create() {
     const { props } = usePage<any>();
-    const { type, cells, activeRole } = props;
+    const { type, cells, activeRole, assignedCell } = props;
 
     return (
         <AdminDashboardLayout header={
@@ -67,10 +73,34 @@ export default function Create() {
 
                 <div className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800">
                     <div className="p-6">
-                        {type === 'member' && <MembersDataForm cells={cells} />}
-                        {type === 'report' && <SubmitReportForm cells={cells} />}
-                        {type === 'childbirth' && <ChildbirthNoticeForm cells={cells} />}
-                        {type === 'soul' && <SoulsRegistrationForm cells={cells} />}
+                        {type === 'member' && (
+                            <MembersDataForm
+                                cells={cells}
+                                activeRole={activeRole}
+                                assignedCell={assignedCell}
+                            />
+                        )}
+                        {type === 'report' && (
+                            <SubmitReportForm
+                                cells={cells}
+                                activeRole={activeRole}
+                                assignedCell={assignedCell}
+                            />
+                        )}
+                        {type === 'childbirth' && (
+                            <ChildbirthNoticeForm
+                                cells={cells}
+                                activeRole={activeRole}
+                                assignedCell={assignedCell}
+                            />
+                        )}
+                        {type === 'soul' && (
+                            <SoulsRegistrationForm
+                                cells={cells}
+                                activeRole={activeRole}
+                                assignedCell={assignedCell}
+                            />
+                        )}
                     </div>
                 </div>
             </div>
@@ -94,14 +124,14 @@ function FormField({ label, id, required, children, error }: { label: string; id
     );
 }
 
-function FormShell({ children, onSubmit, submitting, submitLabel }: { children: ReactNode; onSubmit: FormEventHandler; submitting: boolean; submitLabel: string }) {
+function FormShell({ children, onSubmit, submitting, submitLabel, disabled = false }: { children: ReactNode; onSubmit: FormEventHandler; submitting: boolean; submitLabel: string; disabled?: boolean }) {
     return (
         <form onSubmit={onSubmit} className="space-y-4">
             {children}
             <div className="flex justify-end pt-4 sticky bottom-0 z-10 -mx-6 -mb-6 rounded-b-xl border-t border-gray-100 bg-white/90 px-6 py-4 backdrop-blur-md dark:border-gray-700 dark:bg-gray-800/90">
                 <button
                     type="submit"
-                    disabled={submitting}
+                    disabled={submitting || disabled}
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {submitting ? (
@@ -119,9 +149,62 @@ function FormShell({ children, onSubmit, submitting, submitLabel }: { children: 
     );
 }
 
-function MembersDataForm({ cells }: { cells: Cell[] }) {
+function ImpactCellField({
+    id,
+    cells,
+    value,
+    onChange,
+    isRegisteredCellLeader,
+    assignedCell,
+}: {
+    id: string;
+    cells: Cell[];
+    value: string;
+    onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+    isRegisteredCellLeader: boolean;
+    assignedCell: Cell | null;
+}) {
+    if (isRegisteredCellLeader) {
+        return (
+            <FormField label="Impact Cell" id={`${id}-assigned-cell`} required>
+                <div
+                    id={`${id}-assigned-cell`}
+                    className={`${inputCls} flex min-h-10 items-center bg-gray-50 text-gray-700 dark:bg-gray-900 dark:text-gray-200`}
+                    data-testid={`${id}-assigned-cell`}
+                >
+                    {assignedCell?.name ?? 'No Impact Cell assigned'}
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {assignedCell
+                        ? 'This submission is automatically tied to your registered Impact Cell.'
+                        : 'No Impact Cell is assigned to your account. Contact an administrator before submitting.'}
+                </p>
+            </FormField>
+        );
+    }
+
+    return (
+        <FormField label="Impact Cell" id={`${id}-cell`} required>
+            <select id={`${id}-cell`} value={value} onChange={onChange} required className={inputCls}>
+                <option value="">Select cell</option>
+                {cells.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+        </FormField>
+    );
+}
+
+function MembersDataForm({
+    cells,
+    activeRole,
+    assignedCell,
+}: {
+    cells: Cell[];
+    activeRole: string | null;
+    assignedCell: Cell | null;
+}) {
+    const isRegisteredCellLeader = activeRole === 'Impact_Leaders';
     const [form, setForm] = useState({
-        impact_cell_id: '', full_name: '', phone: '', email: '', gender: '', date_of_birth: '',
+        impact_cell_id: assignedCell?.id ?? '', full_name: '', phone: '', email: '', gender: '', date_of_birth: '',
         occupation: '', marital_status: '', address: '', centre: '',
         member_status: '', department: '', joined_date: '',
     });
@@ -146,15 +229,22 @@ function MembersDataForm({ cells }: { cells: Cell[] }) {
         setForm(prev => ({ ...prev, [k]: e.target.value }));
 
     return (
-        <FormShell onSubmit={handleSubmit} submitting={submitting} submitLabel="Save Member">
+        <FormShell
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            submitLabel="Save Member"
+            disabled={isRegisteredCellLeader && !assignedCell}
+        >
             {serverError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{serverError}</p>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField label="Impact Cell" id="member-cell" required>
-                    <select id="member-cell" value={form.impact_cell_id} onChange={set('impact_cell_id')} required className={inputCls}>
-                        <option value="">Select cell</option>
-                        {cells.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                </FormField>
+                <ImpactCellField
+                    id="member"
+                    cells={cells}
+                    value={form.impact_cell_id}
+                    onChange={set('impact_cell_id')}
+                    isRegisteredCellLeader={isRegisteredCellLeader}
+                    assignedCell={assignedCell}
+                />
                 <FormField label="Full Name" id="member-name" required>
                     <input id="member-name" type="text" value={form.full_name} onChange={set('full_name')} required className={inputCls} />
                 </FormField>
@@ -213,11 +303,20 @@ function MembersDataForm({ cells }: { cells: Cell[] }) {
     );
 }
 
-function SubmitReportForm({ cells }: { cells: Cell[] }) {
+function SubmitReportForm({
+    cells,
+    activeRole,
+    assignedCell,
+}: {
+    cells: Cell[];
+    activeRole: string | null;
+    assignedCell: Cell | null;
+}) {
+    const isRegisteredCellLeader = activeRole === 'Impact_Leaders';
     const [form, setForm] = useState({
-        impact_cell_id: '', fellowship_date: '',
+        impact_cell_id: assignedCell?.id ?? '', fellowship_date: '',
         adults: '0', children: '0', first_timers: '0', new_members: '0',
-        offering_hq: '0', offering_centre: '0',
+        offering_hq: '0',
     });
     const [submitting, setSubmitting] = useState(false);
     const [serverError, setServerError] = useState('');
@@ -238,7 +337,6 @@ function SubmitReportForm({ cells }: { cells: Cell[] }) {
                 first_timers: parseInt(form.first_timers) || 0,
                 new_members: parseInt(form.new_members) || 0,
                 offering_hq: parseFloat(form.offering_hq) || 0,
-                offering_centre: parseFloat(form.offering_centre) || 0,
             },
         }, {
             preserveScroll: true,
@@ -251,15 +349,22 @@ function SubmitReportForm({ cells }: { cells: Cell[] }) {
         setForm(prev => ({ ...prev, [k]: e.target.value }));
 
     return (
-        <FormShell onSubmit={handleSubmit} submitting={submitting} submitLabel="Submit Report">
+        <FormShell
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            submitLabel="Submit Report"
+            disabled={isRegisteredCellLeader && !assignedCell}
+        >
             {serverError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{serverError}</p>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField label="Impact Cell" id="report-cell" required>
-                    <select id="report-cell" value={form.impact_cell_id} onChange={set('impact_cell_id')} required className={inputCls}>
-                        <option value="">Select cell</option>
-                        {cells.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                </FormField>
+                <ImpactCellField
+                    id="report"
+                    cells={cells}
+                    value={form.impact_cell_id}
+                    onChange={set('impact_cell_id')}
+                    isRegisteredCellLeader={isRegisteredCellLeader}
+                    assignedCell={assignedCell}
+                />
                 <FormField label="Fellowship Date" id="report-date" required>
                     <input id="report-date" type="date" value={form.fellowship_date} onChange={set('fellowship_date')} required className={inputCls} />
                 </FormField>
@@ -278,17 +383,23 @@ function SubmitReportForm({ cells }: { cells: Cell[] }) {
                 <FormField label="Offering (HQ)" id="report-offer-hq">
                     <input id="report-offer-hq" type="number" min="0" step="0.01" value={form.offering_hq} onChange={set('offering_hq')} className={inputCls} />
                 </FormField>
-                <FormField label="Offering (Centre)" id="report-offer-c">
-                    <input id="report-offer-c" type="number" min="0" step="0.01" value={form.offering_centre} onChange={set('offering_centre')} className={inputCls} />
-                </FormField>
             </div>
         </FormShell>
     );
 }
 
-function ChildbirthNoticeForm({ cells }: { cells: Cell[] }) {
+function ChildbirthNoticeForm({
+    cells,
+    activeRole,
+    assignedCell,
+}: {
+    cells: Cell[];
+    activeRole: string | null;
+    assignedCell: Cell | null;
+}) {
+    const isRegisteredCellLeader = activeRole === 'Impact_Leaders';
     const [form, setForm] = useState({
-        impact_cell_id: '', child_name: '', parent_name: '', date_of_birth: '',
+        impact_cell_id: assignedCell?.id ?? '', child_name: '', parent_name: '', date_of_birth: '',
         gender: '', phone: '',
     });
     const [submitting, setSubmitting] = useState(false);
@@ -317,15 +428,22 @@ function ChildbirthNoticeForm({ cells }: { cells: Cell[] }) {
         setForm(prev => ({ ...prev, [k]: e.target.value }));
 
     return (
-        <FormShell onSubmit={handleSubmit} submitting={submitting} submitLabel="Save Childbirth Notice">
+        <FormShell
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            submitLabel="Save Childbirth Notice"
+            disabled={isRegisteredCellLeader && !assignedCell}
+        >
             {serverError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{serverError}</p>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField label="Impact Cell" id="cb-cell" required>
-                    <select id="cb-cell" value={form.impact_cell_id} onChange={set('impact_cell_id')} required className={inputCls}>
-                        <option value="">Select cell</option>
-                        {cells.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                </FormField>
+                <ImpactCellField
+                    id="childbirth"
+                    cells={cells}
+                    value={form.impact_cell_id}
+                    onChange={set('impact_cell_id')}
+                    isRegisteredCellLeader={isRegisteredCellLeader}
+                    assignedCell={assignedCell}
+                />
                 <FormField label="Child Name" id="cb-name" required>
                     <input id="cb-name" type="text" value={form.child_name} onChange={set('child_name')} required className={inputCls} />
                 </FormField>
@@ -350,9 +468,18 @@ function ChildbirthNoticeForm({ cells }: { cells: Cell[] }) {
     );
 }
 
-function SoulsRegistrationForm({ cells }: { cells: Cell[] }) {
+function SoulsRegistrationForm({
+    cells,
+    activeRole,
+    assignedCell,
+}: {
+    cells: Cell[];
+    activeRole: string | null;
+    assignedCell: Cell | null;
+}) {
+    const isRegisteredCellLeader = activeRole === 'Impact_Leaders';
     const [form, setForm] = useState({
-        impact_cell_id: '', full_name: '', phone: '', gender: '',
+        impact_cell_id: assignedCell?.id ?? '', full_name: '', phone: '', gender: '',
         occupation: '', marital_status: '', prayer_request: '',
     });
     const [submitting, setSubmitting] = useState(false);
@@ -382,15 +509,22 @@ function SoulsRegistrationForm({ cells }: { cells: Cell[] }) {
         setForm(prev => ({ ...prev, [k]: e.target.value }));
 
     return (
-        <FormShell onSubmit={handleSubmit} submitting={submitting} submitLabel="Save Soul">
+        <FormShell
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            submitLabel="Save Soul"
+            disabled={isRegisteredCellLeader && !assignedCell}
+        >
             {serverError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{serverError}</p>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField label="Impact Cell" id="soul-cell" required>
-                    <select id="soul-cell" value={form.impact_cell_id} onChange={set('impact_cell_id')} required className={inputCls}>
-                        <option value="">Select cell</option>
-                        {cells.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                </FormField>
+                <ImpactCellField
+                    id="soul"
+                    cells={cells}
+                    value={form.impact_cell_id}
+                    onChange={set('impact_cell_id')}
+                    isRegisteredCellLeader={isRegisteredCellLeader}
+                    assignedCell={assignedCell}
+                />
                 <FormField label="Full Name" id="soul-name" required>
                     <input id="soul-name" type="text" value={form.full_name} onChange={set('full_name')} required className={inputCls} />
                 </FormField>

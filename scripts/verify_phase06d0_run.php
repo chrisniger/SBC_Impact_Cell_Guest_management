@@ -4,7 +4,7 @@
  *
  * Asserts:
  *  [1]  scripts directory + this verifier are syntactically valid.
- *  [2]  AdminDashboardLayout component file exists.
+ *  [2]  AdminDashboardLayout component file exists + has GlobalSearch import + renders <GlobalSearch /> AND does NOT import/render LanguageSwitcher (Phase 06e single-language invariant).
  *  [3]  AdminSidebar component file exists with 13 nav entries.
  *  [4]  AdminSidebarNavItem component file exists.
  *  [5]  Greeting component file exists.
@@ -64,20 +64,22 @@ $layoutText   = read('resources/js/Layouts/AdminDashboardLayout.tsx');
 $sidebarText  = read('resources/js/Components/AdminSidebar.tsx');
 $navItemText  = read('resources/js/Components/AdminSidebarNavItem.tsx');
 
-// Phase 06d.2 wired HeadlessUI Combobox (GlobalSearch) + Listbox (LanguageSwitcher)
-// components into AdminDashboardLayout, replacing the disabled-input placeholders.
-// The admin-global-search + admin-language-switcher testids moved INTO those
-// components (GlobalSearch:61, LanguageSwitcher:48). We assert the architectural
-// contract (component imports + usages) so the verifier tracks how the layout
-// is wired, not literal strings that may relocate again in later polish rounds.
-check(2, 'AdminDashboardLayout.tsx: sidebar testid (layout-owned) + GlobalSearch/LanguageSwitcher imports+usage (post-06d.2)',
+// Phase 06d.2 wired HeadlessUI Combobox (GlobalSearch) into AdminDashboardLayout,
+// replacing the disabled-input placeholder. Phase 06e removed LanguageSwitcher
+// (single-language invariant — default is English for all users). The
+// admin-global-search testid lives in GlobalSearch:61. We assert the
+// architectural contract (component import + usage) so the verifier tracks how
+// the layout is wired, NOT literal placeholder strings that may relocate again
+// in later polish rounds. Phase 06e also asserts the NEGATIVE: this layout does
+// NOT import or render LanguageSwitcher (single-language re-introduction guard).
+check(2, 'AdminDashboardLayout.tsx: sidebar testid (layout-owned) + GlobalSearch import+usage (post-06d.2) AND LanguageSwitcher INTENTIONALLY ABSENT (Phase 06e single-language invariant — default is English for all)',
     $layoutText !== ''
     && str_contains($layoutText, 'data-testid="admin-sidebar"')
     && str_contains($layoutText, '@/Components/GlobalSearch')
     && str_contains($layoutText, '<GlobalSearch ')
-    && str_contains($layoutText, '@/Components/LanguageSwitcher')
-    && str_contains($layoutText, '<LanguageSwitcher '),
-    'missing layout shell testid or GlobalSearch/LanguageSwitcher imports/usages (note: layout may import GlobalSearch as `import GlobalSearch, { SearchResult } from ...` — assert the path substring to handle both shapes)');
+    && !str_contains($layoutText, '@/Components/LanguageSwitcher')
+    && !str_contains($layoutText, '<LanguageSwitcher '),
+    'expected AdminDashboardLayout owns admin-sidebar testid + has GlobalSearch import + RENDERS <GlobalSearch /> AND does NOT import-or-render LanguageSwitcher (Phase 06e removed; default language is English for all users)');
 
 check(3, 'AdminSidebar.tsx: ≥13 nav items + pair (routeName: AND iconPath:) per item + collapse toggle + brand logo block (Phase 13 iconPath refactor → named ICON_* consts)',
     $sidebarText !== ''

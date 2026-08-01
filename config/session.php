@@ -2,6 +2,16 @@
 
 use Illuminate\Support\Str;
 
+// Cookie paths are URL paths, not filesystem paths. On Windows/Git Bash,
+// SESSION_PATH can be injected into the process environment as a value such
+// as `C:/Program Files/Git/`, which browsers reject and which breaks both
+// the session and CSRF cookies. Fall back to the root URL path for malformed
+// or missing values while preserving valid configured URL paths.
+$sessionPath = env('SESSION_PATH', '/');
+$sessionPath = is_string($sessionPath) && str_starts_with($sessionPath, '/')
+    ? $sessionPath
+    : '/';
+
 return [
 
     /*
@@ -143,7 +153,7 @@ return [
     |
     */
 
-    'path' => env('SESSION_PATH', '/'),
+    'path' => $sessionPath,
 
     /*
     |--------------------------------------------------------------------------

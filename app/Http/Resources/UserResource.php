@@ -72,7 +72,11 @@ class UserResource extends JsonResource
             // downstream `?? 'KEY_MISSING'` style probes misread as a
             // missing key, AND the empty string did not match any
             // `<option value="">` placeholder per React/HTML semantics.
-            'impact_cell_id'    => $this->resource->impact_cell_id,
+            'impact_cell_id'        => $this->resource->impact_cell_id,
+            // Phase 15 — multi-cell assignment for zonal coordinators.
+            'zonal_impact_cell_ids' => $this->resource->relationLoaded('zonalImpactCells')
+                ? $this->resource->zonalImpactCells->pluck('id')->values()->all()
+                : [],
         ];
     }
 }

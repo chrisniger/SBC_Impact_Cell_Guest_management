@@ -25,6 +25,8 @@ interface UserRow {
     has_multiple_roles: boolean;
     active_role: string | null;
     active_group: string | null;
+    impact_cell_id: string | null;
+    zonal_impact_cell_ids: string[];
     last_seen_at: string | null;
     joined_at: string | null;
 }
@@ -42,11 +44,14 @@ interface PaginatedUsers {
     };
 }
 
+interface CellOption { id: string; name: string; is_primary: boolean; }
+
 interface AdminUsersPageProps {
     users: PaginatedUsers;
     canCreate: boolean;
     activeRole: string | null;
     rolesForNew: string[];
+    cellsList: CellOption[];
     currentUserId: number;
     flash?: { success?: string; error?: string } | null;
 }
@@ -65,6 +70,7 @@ export default function AdminUsersIndex({
     canCreate,
     activeRole,
     rolesForNew,
+    cellsList,
     currentUserId,
     flash,
 }: AdminUsersPageProps) {
@@ -171,6 +177,7 @@ export default function AdminUsersIndex({
                                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Name</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Email</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Active Role</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Impact Cells</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Last seen</th>
                                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
                             </tr>
@@ -178,7 +185,7 @@ export default function AdminUsersIndex({
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                             {users.data.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400" data-testid="users-empty-row">
+                                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400" data-testid="users-empty-row">
                                         No users match the current search.
                                     </td>
                                 </tr>
@@ -187,6 +194,7 @@ export default function AdminUsersIndex({
                                 <UserRowItem
                                     key={u.id}
                                     user={u}
+                                    cellsList={cellsList}
                                     isSelf={u.id === currentUserId}
                                     onSwitchRole={(role) => {
                                         router.patch(
@@ -254,6 +262,7 @@ export default function AdminUsersIndex({
                 show={addOpen}
                 onClose={() => setAddOpen(false)}
                 rolesForNew={rolesForNew}
+                cellsList={cellsList}
                 dataTestId="users-add-modal"
             />
         </AdminDashboardLayout>
@@ -267,11 +276,13 @@ export default function AdminUsersIndex({
  */
 function UserRowItem({
     user,
+    cellsList,
     isSelf,
     onSwitchRole,
     onDelete,
 }: {
     user: UserRow;
+    cellsList: CellOption[];
     isSelf: boolean;
     onSwitchRole: (role: string) => void;
     onDelete: () => void;
@@ -310,6 +321,12 @@ function UserRowItem({
                         </span>
                     )}
                 </div>
+            </td>
+            <td className="px-4 py-3">
+                <AssignedCells
+                    user={user}
+                    cellsList={cellsList}
+                />
             </td>
             <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
                 <RelativeTime date={user.last_seen_at} className="text-xs" />
@@ -369,6 +386,50 @@ function UserRowItem({
     );
 }
 
+function AssignedCells({
+    user,
+    cellsList,
+}: {
+    user: UserRow;
+    cellsList: CellOption[];
+}) {
+    const ids = Array.from(new Set([
+        ...(user.roles.includes('Impact_Leaders') && user.impact_cell_id
+            ? [user.impact_cell_id]
+            : []),
+        ...(user.roles.includes('Impact_Zonal_Coordinator')
+            ? user.zonal_impact_cell_ids
+            : []),
+    ]));
+    const names = ids.map((id) => cellsList.find((cell) => cell.id === id)?.name ?? 'Unknown cell');
+
+    if (names.length === 0) {
+        return <span className="text-xs text-gray-400 dark:text-gray-500">—</span>;
+    }
+
+    const fullLabel = names.join(', ');
+    const remaining = names.length - 1;
+
+    return (
+        <div
+            className="flex max-w-[220px] flex-wrap items-center gap-1"
+            role="group"
+            title={fullLabel}
+            aria-label={`Assigned Impact Cells: ${fullLabel}`}
+            data-testid={`user-row-${user.id}-impact-cells`}
+        >
+            <span className="inline-flex max-w-[170px] truncate rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                {names[0]}
+            </span>
+            {remaining > 0 && (
+                <span className="inline-flex rounded-md bg-gray-100 px-1.5 py-1 text-[11px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    +{remaining}
+                </span>
+            )}
+        </div>
+    );
+}
+
 /**
  * Add User modal — opens via `setAddOpen(true)` from the header CTA.
  *
@@ -377,6 +438,8 @@ function UserRowItem({
  *   - email (required, unique)
  *   - role[] (multi-checkbox; client requires at least one before submit)
  *   - active_role (single dropdown; auto-populates from the first role)
+ *   - impact_cell_id (single cell when Impact_Leaders is selected)
+ *   - zonal_impact_cell_ids (multiple cells when Impact_Zonal_Coordinator is selected)
  *   - password (required, must satisfy Laravel's Password::defaults())
  *   - password_confirmation (must match)
  *
@@ -387,11 +450,13 @@ function AddUserModal({
     show,
     onClose,
     rolesForNew,
+    cellsList,
     dataTestId,
 }: {
     show: boolean;
     onClose: () => void;
     rolesForNew: string[];
+    cellsList: CellOption[];
     dataTestId?: string;
 }) {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -401,6 +466,8 @@ function AddUserModal({
         password_confirmation: '',
         roles: [] as string[],
         active_role: '' as string,
+        impact_cell_id: '' as string,
+        zonal_impact_cell_ids: [] as string[],
     });
 
     const submit: FormEventHandler = (e) => {
@@ -424,6 +491,23 @@ function AddUserModal({
         if (!next.includes(data.active_role)) {
             setData('active_role', next[0] ?? '');
         }
+        if (!next.includes('Impact_Leaders')) {
+            setData('impact_cell_id', '');
+        }
+        if (!next.includes('Impact_Zonal_Coordinator')) {
+            setData('zonal_impact_cell_ids', []);
+        }
+    };
+
+    const needsLeaderCell = data.roles.includes('Impact_Leaders');
+    const needsZonalCells = data.roles.includes('Impact_Zonal_Coordinator');
+    const toggleZonalCell = (cellId: string) => {
+        setData(
+            'zonal_impact_cell_ids',
+            data.zonal_impact_cell_ids.includes(cellId)
+                ? data.zonal_impact_cell_ids.filter((id) => id !== cellId)
+                : [...data.zonal_impact_cell_ids, cellId],
+        );
     };
 
     return (
@@ -527,6 +611,54 @@ function AddUserModal({
                     <InputError message={errors.active_role} />
                 </div>
 
+                {/* Role-specific Impact Cell assignments */}
+                {needsLeaderCell && (
+                    <div className="space-y-1.5 rounded-lg border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-800/50 dark:bg-indigo-900/20">
+                        <InputLabel htmlFor="add-user-impact-cell" value="Impact Cell for this leader" />
+                        <select
+                            id="add-user-impact-cell"
+                            name="impact_cell_id"
+                            value={data.impact_cell_id}
+                            onChange={(e) => setData('impact_cell_id', e.target.value)}
+                            className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                            data-testid="add-user-impact-cell"
+                            required
+                        >
+                            <option value="">— Pick the cell this leader heads —</option>
+                            {cellsList.map((cell) => (
+                                <option key={cell.id} value={cell.id}>{cell.name}</option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Required for Impact Leaders. Select one cell.</p>
+                        <InputError message={errors.impact_cell_id} />
+                    </div>
+                )}
+
+                {needsZonalCells && (
+                    <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20">
+                        <InputLabel value="Impact Cells covered by this Zonal Coordinator" />
+                        <div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2" data-testid="add-user-zonal-cells">
+                            {cellsList.map((cell) => {
+                                const checked = data.zonal_impact_cell_ids.includes(cell.id);
+                                return (
+                                    <label key={cell.id} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${checked ? 'border-amber-300 bg-amber-100/70 dark:border-amber-700 dark:bg-amber-900/40' : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800'}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleZonalCell(cell.id)}
+                                            className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 dark:border-gray-700 dark:bg-gray-900"
+                                            data-testid={`add-user-zonal-cell-${cell.id}`}
+                                        />
+                                        <span className="truncate text-gray-800 dark:text-gray-200">{cell.name}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Required for Zonal Coordinators. Select one or more cells.</p>
+                        <InputError message={errors.zonal_impact_cell_ids} />
+                    </div>
+                )}
+
                 {/* Password + confirmation */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
@@ -568,7 +700,7 @@ function AddUserModal({
                     </SecondaryButton>
                     <PrimaryButton
                         type="submit"
-                        disabled={processing || data.roles.length === 0}
+                        disabled={processing || data.roles.length === 0 || (needsZonalCells && data.zonal_impact_cell_ids.length === 0) || (needsLeaderCell && !data.impact_cell_id)}
                         data-testid="users-add-submit"
                     >
                         {processing ? 'Creating…' : 'Create user'}

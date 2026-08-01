@@ -16,8 +16,8 @@
  *   [9]  RecentRegistrationsFeed: data-testid presence + exports getInitials
  *   [10] GlobalSearch uses @headlessui/react Combobox + ComboboxInput + ComboboxOptions
  *   [11] GlobalSearch has 'admin-global-search-input' ComboboxInput testid
- *   [12] LanguageSwitcher uses @headlessui/react Listbox + ListboxButton + ListboxOption
- *   [13] LanguageSwitcher preserves 'admin-language-switcher' placeholder testid
+ *   [12] LanguageSwitcher.tsx is INTENTIONALLY ABSENT (Phase 06e removed — single-language invariant)
+ *   [13] admin-language-switcher testid is INTENTIONALLY ABSENT (Phase 06e removed — placeholder-wiring reintroduction guard)
  *   [14] FooterCard.tsx exists with admin-footer-card / admin-footer-env / admin-footer-version testids
  *   [15] DashboardController extended with systemOverview / globalSearchIndex / recentActivity / recentRegistrations payloads
  *
@@ -109,7 +109,7 @@ check(9, 'RecentRegistrationsFeed: data-testid scope + exports getInitials',
     && preg_match('/export\s+function\s+getInitials\s*\(/s', $src['recentRegistrations']) === 1);
 
 // ─────────────────────────────────────────────────────────────────────────
-// GlobalSearch + LanguageSwitcher + FooterCard
+// GlobalSearch + LanguageSwitcher-absence + FooterCard
 // ─────────────────────────────────────────────────────────────────────────
 
 check(10, 'GlobalSearch uses @headlessui/react Combobox + ComboboxInput + ComboboxOptions',
@@ -122,16 +122,21 @@ check(11, 'GlobalSearch has admin-global-search-input ComboboxInput testid',
     str_contains($src['globalSearch'], 'admin-global-search-input')
     && str_contains($src['globalSearch'], 'admin-global-search-options'));
 
-check(12, 'LanguageSwitcher uses @headlessui/react Listbox + ListboxButton + ListboxOption',
-    str_contains($src['languageSwitcher'], "@headlessui/react")
-    && str_contains($src['languageSwitcher'], 'Listbox')
-    && str_contains($src['languageSwitcher'], 'ListboxButton')
-    && str_contains($src['languageSwitcher'], 'ListboxOption'));
+// Phase 06e — LanguageSwitcher.tsx was REMOVED (default-language-is-English-only
+// product invariant: the user removed the language icon on the dashboard because
+// the default language is English for all users). The [12]+[13] assertions below
+// are now ABSENCE-REGRESSION-GUARDS: they FAIL if anyone re-introduces the
+// LanguageSwitcher component file OR re-wires the admin-language-switcher testid
+// in any source file (with the file gone post-removal, an empty str_contains
+// automatically returns false, but we keep the $src array path so future
+// refactors that re-create the file under the same path are caught).
+check(12, 'LanguageSwitcher.tsx is INTENTIONALLY ABSENT (Phase 06e removed — single-language invariant; default is English for all users)',
+    !is_file($root . '/resources/js/Components/LanguageSwitcher.tsx'),
+    'expected LanguageSwitcher.tsx to not exist on disk; if you see this fail, the placeholder was re-introduced (regression of the single-language product invariant)');
 
-check(13, 'LanguageSwitcher preserves admin-language-switcher placeholder testid',
-    str_contains($src['languageSwitcher'], 'admin-language-switcher')
-    && !preg_match('/disabled\s*=\s*{?true}?/s', $src['languageSwitcher']),
-    'expected admin-language-switcher testid + NOT have a disabled={true} attribute (placeholder had it)');
+check(13, 'admin-language-switcher testid is INTENTIONALLY ABSENT (Phase 06e removed — file is gone, so source reads empty; this is the placeholder-wiring reintroduction guard)',
+    !str_contains($src['languageSwitcher'], 'admin-language-switcher'),
+    'expected admin-language-switcher testid NOT to be present in (post-removal) LanguageSwitcher source; str_contains on empty haystack returns false automatically, so the empty-file state is covered without an explicit OR');
 
 check(14, 'FooterCard.tsx exists with admin-footer-card + admin-footer-env + admin-footer-version testids',
     str_contains($src['footerCard'], 'admin-footer-card')

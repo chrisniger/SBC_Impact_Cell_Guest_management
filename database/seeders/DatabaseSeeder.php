@@ -24,6 +24,10 @@ class DatabaseSeeder extends Seeder
             FollowUpOfficerSeeder::class,
             FollowUpTeamSeeder::class,
             ZonalCoordinatorSeeder::class,
+            // Phase 16 — sample submission history for the dev Impact_Leaders
+            // user (OweLeader) so /my-reports and /dashboard's Recent
+            // Submissions panel have real data on first boot. Idempotent.
+            ImpactSubmissionSeeder::class,
         ]);
     }
 }

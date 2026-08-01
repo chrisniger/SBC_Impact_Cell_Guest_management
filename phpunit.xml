@@ -18,19 +18,40 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
-        <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!--
+            Phase 26 — defensively forced env vars.
+
+            `<env>` defaults to set-if-not-already-set semantics; without
+            `force="true"`, Laravel falls back to the `.env`-loaded value
+            when env names COLLIDE between `.env` and phpunit.xml.
+
+            The DB_* trio is the most consequential (`:memory:` SQLite was
+            silently shadowed by `.env`'s `DB_CONNECTION=mysql`, so tests
+            ran `RefreshDatabase::migrate:fresh` against the live impact_guest
+            dev DB and the running `php artisan serve` answered 503 to
+            /register between recovery and the next browser hit).
+
+            The remaining env vars are forced for the SAME defensive
+            reason — if a teammate toggles `CACHE_STORE=database`,
+            `SESSION_DRIVER=database`, or `BROADCAST_CONNECTION=pusher`
+            in `.env`, tests would silently write to MySQL `cache` /
+            `sessions` tables or push to a real broadcast service,
+            corrupting state and rate-limiting adjacent teams' accounts.
+            Forcing eliminates that whole class of bleed.
+        -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="DB_CONNECTION" value="mysql" force="true"/>
+        <env name="DB_DATABASE"  value="impact_test" force="true"/>
+        <env name="DB_URL"        value="" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
     </php>
 </phpunit>

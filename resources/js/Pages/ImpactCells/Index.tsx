@@ -25,16 +25,32 @@ export default function ImpactCellsIndex({ cells, activeRole }: { cells: ImpactC
         <AdminDashboardLayout
             header={
                 <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
-                        Outreach Network
-                    </p>
-                    <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                        Impact Cells
-                    </h2>
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                        {primaryCount} primary · {subCellCount} sub-cell{subCellCount === 1 ? '' : 's'} ·{' '}
-                        Active role: <span className="font-mono">{activeRole ?? '—'}</span>
-                    </p>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                                Outreach Network
+                            </p>
+                            <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+                                Impact Cells
+                            </h2>
+                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                                {primaryCount} primary · {subCellCount} sub-cell{subCellCount === 1 ? '' : 's'} ·{' '}
+                                Active role: <span className="font-mono">{activeRole ?? '—'}</span>
+                            </p>
+                        </div>
+                        {(activeRole === 'Administrator' || activeRole === 'Impact_Cell_Admin') && (
+                            <Link
+                                href={route('impact-cells.create')}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                                data-testid="impact-cell-add-new-button"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                                    <path d="M12 5v14" /><path d="M5 12h14" />
+                                </svg>
+                                Add new cell
+                            </Link>
+                        )}
+                    </div>
                 </div>
             }
         >
