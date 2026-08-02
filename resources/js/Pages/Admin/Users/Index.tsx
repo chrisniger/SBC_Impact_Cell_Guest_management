@@ -8,7 +8,7 @@ import RoleBadge from '@/Components/RoleBadge';
 import SecondaryButton from '@/Components/SecondaryButton';
 import TextInput from '@/Components/TextInput';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { FormEventHandler, useState } from 'react';
+import { FormEventHandler, useEffect, useState } from 'react';
 
 interface UsersPaginationLink {
     url: string | null;
@@ -332,7 +332,7 @@ function UserRowItem({
                 <RelativeTime date={user.last_seen_at} className="text-xs" />
             </td>
             <td className="px-4 py-3 text-right">
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                     <Link
                         href={route('admin.users.edit', user.id)}
                         preserveState
@@ -364,6 +364,12 @@ function UserRowItem({
                                 <option key={r} value={r}>{r}</option>
                             ))}
                     </select>
+                    {user.roles.includes('Impact_Zonal_Coordinator') && (
+                        <ZonalCellPicker
+                            user={user}
+                            cellsList={cellsList}
+                        />
+                    )}
                     <button
                         type="button"
                         onClick={onDelete}
@@ -383,6 +389,153 @@ function UserRowItem({
                 </div>
             </td>
         </tr>
+    );
+}
+
+/**
+ * Quick inline cell-assign picker for zonal users, rendered next to the
+ * role dropdown in the Actions cell.
+ *
+ * Layout note: the panel expands in-flow (the wrapper takes `w-full` +
+ * `order-last`, which `flex-wrap` pushes to its own line) rather than
+ * absolutely-positioned, so it can never be clipped by the table's
+ * `overflow-x-auto` scroll container.
+ *
+ * Each checkbox toggle auto-saves via
+ * PATCH /admin/users/{user}/zonal-cells; the controller redirects back,
+ * so Inertia refetches the table with fresh props and both this picker
+ * and the Impact Cells column stay in sync. A tiny optimistic override
+ * keeps the checkboxes responsive while the visit is in flight.
+ */
+function ZonalCellPicker({
+    user,
+    cellsList,
+}: {
+    user: UserRow;
+    cellsList: CellOption[];
+}) {
+    const [open, setOpen] = useState<boolean>(false);
+    const [saving, setSaving] = useState<boolean>(false);
+    const [optimisticIds, setOptimisticIds] = useState<string[] | null>(null);
+
+    // When a refetched payload lands (the controller redirects back),
+    // drop the optimistic override so the panel reflects the server's
+    // persisted state.
+    useEffect(() => setOptimisticIds(null), [user.zonal_impact_cell_ids]);
+
+    const shownIds = optimisticIds ?? user.zonal_impact_cell_ids;
+    const count = shownIds.length;
+
+    const toggleCell = (cellId: string) => {
+        const next = shownIds.includes(cellId)
+            ? shownIds.filter((id) => id !== cellId)
+            : [...shownIds, cellId];
+        setOptimisticIds(next);
+        setSaving(true);
+        router.patch(
+            route('admin.users.update-zonal-cells', user.id),
+            { zonal_impact_cell_ids: next },
+            {
+                preserveScroll: true,
+                preserveState: true,
+                onFinish: () => setSaving(false),
+                onError: () => setOptimisticIds(null),
+            },
+        );
+    };
+
+    return (
+        <div
+            className={open ? 'order-last w-full' : ''}
+            data-testid={`user-row-${user.id}-zonal-picker`}
+        >
+            <div className="flex items-center gap-1.5">
+                <button
+                    type="button"
+                    onClick={() => setOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:border-amber-500 hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500/40 dark:border-amber-700/50 dark:bg-gray-800 dark:text-amber-300 dark:hover:bg-amber-900/30"
+                    data-testid={`user-row-${user.id}-zonal-cells-toggle`}
+                    aria-expanded={open}
+                    title="Quick-assign the Impact Cells covered by this Zonal Coordinator"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                        <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" />
+                        <circle cx="12" cy="10" r="3" />
+                    </svg>
+                    Cells
+                    <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-100 px-1 text-[10px] font-bold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+                        {count}
+                    </span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true">
+                        <path d="m6 9 6 6 6-6" />
+                    </svg>
+                </button>
+                {saving && (
+                    <span
+                        className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"
+                        data-testid={`user-row-${user.id}-zonal-saving`}
+                    >
+                        <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+                        </svg>
+                        Saving…
+                    </span>
+                )}
+            </div>
+            {open && (
+                <div
+                    className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-800/40 dark:bg-amber-900/20"
+                    data-testid={`user-row-${user.id}-zonal-cells-panel`}
+                >
+                    <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">
+                            Impact Cells covered by this Zonal Coordinator
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => setOpen(false)}
+                            className="text-xs font-medium text-amber-700 underline-offset-2 hover:underline dark:text-amber-300"
+                            data-testid={`user-row-${user.id}-zonal-close`}
+                        >
+                            Close
+                        </button>
+                    </div>
+                    {cellsList.length === 0 ? (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">No Impact Cells available to assign.</p>
+                    ) : (
+                        <div className="grid max-h-48 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                            {cellsList.map((cell) => {
+                                const checked = shownIds.includes(cell.id);
+                                return (
+                                    <label
+                                        key={cell.id}
+                                        className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+                                            checked
+                                                ? 'border-amber-300 bg-white dark:border-amber-600 dark:bg-amber-900/40'
+                                                : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-gray-500'
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleCell(cell.id)}
+                                            disabled={saving}
+                                            className="h-3.5 w-3.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900"
+                                            data-testid={`user-row-${user.id}-zonal-cell-${cell.id}`}
+                                        />
+                                        <span className="truncate text-gray-800 dark:text-gray-200">{cell.name}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
+                    <p className="mt-2 text-[11px] text-amber-700/80 dark:text-amber-300/70">
+                        Changes save automatically. One Zonal Coordinator can cover multiple cells.
+                    </p>
+                </div>
+            )}
+        </div>
     );
 }
 

@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -28,6 +29,8 @@ use Inertia\Response;
  *   GET    /admin/users/{user}/edit    → edit      (Edit page)
  *   PUT    /admin/users/{user}         → update    (Edit form submit; incl. assertSelfCannotDemote)
  *   PATCH  /admin/users/{user}/role    → updateRole (inline role switch, PATCH-targeted)
+ *   PATCH  /admin/users/{user}/zonal-cells → updateZonalCells (inline cell assignment
+ *                                        for Impact_Zonal_Coordinator, PATCH-targeted)
  *   PATCH  /admin/users/{user}/restore → restore   (un-delete)
  *   DELETE /admin/users/{user}         → destroy   (soft-delete; self-delete 403)
  *
@@ -259,6 +262,48 @@ class UserController extends Controller
             'success'     => true,
             'active_role' => $user->fresh()->active_role,
         ]);
+    }
+
+    /**
+     * PATCH /admin/users/{user}/zonal-cells — inline "quick assign" from
+     * the Users table row (next to the role dropdown).
+     *
+     * Mirrors updateRole()'s PATCH-targeted shape but for the
+     * `impact_cell_user` pivot: replaces the user's zonal cell set with
+     * the submitted ids. Server-side restrictions:
+     *   - target user MUST hold Impact_Zonal_Coordinator (422 otherwise),
+     *   - every id must be a primary Impact Cell (same Rule::exists
+     *     predicate as AdminUserRequest::rules(), so the inline picker
+     *     and the full edit form can never drift).
+     *
+     * Returns a redirect (not JSON) so Inertia re-fetches the table with
+     * fresh props — keeps the picker + the Impact Cells column in sync.
+     */
+    public function updateZonalCells(Request $request, User $user): RedirectResponse
+    {
+        $this->authorize('update', $user);
+
+        if (! $user->hasRole('Impact_Zonal_Coordinator')) {
+            abort(422, 'Only Impact Zonal Coordinators can be assigned cells.');
+        }
+
+        $data = $request->validate([
+            'zonal_impact_cell_ids' => ['nullable', 'array'],
+            'zonal_impact_cell_ids.*' => [
+                'required',
+                'string',
+                'uuid',
+                Rule::exists('impact_cells', 'id')
+                    ->where(fn ($query) => $query->where('is_primary', true)),
+            ],
+        ]);
+
+        $user->zonalImpactCells()->sync($data['zonal_impact_cell_ids'] ?? []);
+
+        // No flash banner here on purpose: this is a rapid multi-toggle
+        // interaction and the checked checkboxes are the feedback. A
+        // `with('success', ...)` banner would flicker on every toggle.
+        return redirect()->back();
     }
 
     /**

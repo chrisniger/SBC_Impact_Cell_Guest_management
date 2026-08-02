@@ -128,4 +128,19 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(ImpactCell::class, 'impact_cell_user');
     }
+
+    /**
+     * Phase 36 — the Impact Cell ids assigned to an
+     * Impact_Zonal_Coordinator (impact_cell_user pivot). Empty array for
+     * every other role. Single source of truth for the zonal read-only
+     * scoping across the Impact Cell / Submission / Leadership surfaces
+     * (was previously an inline `pluck('impact_cells.id')->all()` in each
+     * controller).
+     *
+     * @return array<int, string>
+     */
+    public function zonalImpactCellIds(): array
+    {
+        return $this->zonalImpactCells()->pluck('impact_cells.id')->all();
+    }
 }

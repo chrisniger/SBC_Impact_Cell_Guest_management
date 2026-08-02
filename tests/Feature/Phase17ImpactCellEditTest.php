@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\ImpactCell;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -23,10 +22,11 @@ use Tests\TestCase;
  * Inheritance: this test extends Tests\TestCase which uses
  * RefreshDatabaseWithSeed — that trait composes Laravel's
  * RefreshDatabase + forgets Spatie's permission cache after every
- * refresh cycle (Phase 14 follow-up). We additionally `use
- * RefreshDatabase` to match the project's existing convention
- * (AdminUserCellAssignmentTest + ImpactCellAdminAccessTest both do
- * the same harmless double-use).
+ * refresh cycle (Phase 14 follow-up). Deliberately does NOT re-`use
+ * RefreshDatabase` at the class level: the double-use would shadow
+ * RefreshDatabaseWithSeed::beforeRefreshingDatabase() (PHP trait
+ * precedence) and silently drop the impact_test isolation rebind —
+ * tests would then run against the LIVE impact_guest dev DB.
  *
  * Auth plumbing: CSRF bypass inherited from `tests\TestCase.php`
  * (Phase 20); setUp seeds RolesAndPermissionsSeeder (so the 10 Spatie
@@ -37,7 +37,6 @@ use Tests\TestCase;
  */
 class Phase17ImpactCellEditTest extends TestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

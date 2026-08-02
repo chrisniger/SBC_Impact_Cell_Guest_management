@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\ImpactCell;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -29,7 +28,6 @@ use Tests\TestCase;
  */
 class ImpactCellLeadershipEditTest extends TestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

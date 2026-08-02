@@ -3,12 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ProfileTest extends TestCase
 {
-    use RefreshDatabase;
 
     public function test_profile_page_is_displayed(): void
     {
@@ -76,7 +74,10 @@ class ProfileTest extends TestCase
             ->assertRedirect('/');
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        // User uses SoftDeletes (Phase 13) so account deletion is a
+        // reversible tombstone, not a hard delete — the same convention
+        // as Admin/Users/Index (which even has a restore action).
+        $this->assertSoftDeleted('users', ['id' => $user->id]);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account(): void

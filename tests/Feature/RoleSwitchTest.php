@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -20,13 +19,13 @@ use Tests\TestCase;
  *   4. `HandleInertiaRequests` shares the role data the dropdown reads
  *      (`auth.user.roles` / `hasMultipleRoles` / `activeRole`).
  *
- * Inheritance: extends Tests\TestCase (RefreshDatabaseWithSeed). The
- * class-level `use RefreshDatabase` matches the sibling feature-test
- * convention; each test refreshes the schema before running.
+ * Inheritance: extends Tests\TestCase (RefreshDatabaseWithSeed), which
+ * rebinds the connection to the isolated `impact_test` DB. Deliberately
+ * does NOT re-`use RefreshDatabase` at the class level — the double-use
+ * would shadow the isolation rebind (see RolesPermissionsAdminTest).
  */
 class RoleSwitchTest extends TestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

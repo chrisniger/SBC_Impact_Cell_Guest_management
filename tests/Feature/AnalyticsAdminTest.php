@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -21,13 +20,13 @@ use Tests\TestCase;
  *   5. The shared AnalyticsService still powers the Admin Dashboard
  *      (regression guard for the DashboardController delegation).
  *
- * Inheritance: extends Tests\TestCase (RefreshDatabaseWithSeed). The
- * class-level `use RefreshDatabase` matches the sibling feature-test
- * convention; each test refreshes the schema before running.
+ * Inheritance: extends Tests\TestCase (RefreshDatabaseWithSeed), which
+ * rebinds the connection to the isolated `impact_test` DB. Deliberately
+ * does NOT re-`use RefreshDatabase` at the class level — the double-use
+ * would shadow the isolation rebind (see RolesPermissionsAdminTest).
  */
 class AnalyticsAdminTest extends TestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

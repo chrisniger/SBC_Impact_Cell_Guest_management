@@ -137,6 +137,7 @@ Route::middleware('auth')->group(function () {
     Route::get   ('/admin/users/{user}/edit',      [\App\Http\Controllers\Admin\UserController::class, 'edit'])->name('admin.users.edit')->middleware('gate.stubs');
     Route::put   ('/admin/users/{user}',           [\App\Http\Controllers\Admin\UserController::class, 'update'])->name('admin.users.update')->middleware('gate.stubs');
     Route::patch ('/admin/users/{user}/role',      [\App\Http\Controllers\Admin\UserController::class, 'updateRole'])->name('admin.users.update-role');
+    Route::patch ('/admin/users/{user}/zonal-cells', [\App\Http\Controllers\Admin\UserController::class, 'updateZonalCells'])->name('admin.users.update-zonal-cells');
     Route::patch ('/admin/users/{user}/restore',   [\App\Http\Controllers\Admin\UserController::class, 'restore'])->name('admin.users.restore')->middleware('gate.stubs');
     Route::delete('/admin/users/{user}',           [\App\Http\Controllers\Admin\UserController::class, 'destroy'])->name('admin.users.destroy');
 

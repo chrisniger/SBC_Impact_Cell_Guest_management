@@ -5,11 +5,12 @@ namespace Tests\Feature;
 use App\Models\ImpactCell;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Tests\TestCase;    /**
-     * Phase 18 — One-credential-per-Impact-Cell invariant.
+use Tests\TestCase;
+
+/**
+ * Phase 18 — One-credential-per-Impact-Cell invariant.
  *
  * 4 sub-assertions mirror tests/Feature/AdminUserCellAssignmentTest +
  * tests/Feature/Phase17ImpactCellEditTest conventions. Each test
@@ -21,13 +22,14 @@ use Tests\TestCase;    /**
  *      (rule's ignore($id) excludes the editing row itself).
  *   4. Soft-delete of a leader frees the slot — a fresh signup succeeds.
  *
- * Conventions (mirror AdminUserCellAssignmentTest)
- *   - Explicit `use RefreshDatabase;` here on top of the parent's
- *     RefreshDatabaseWithSeed trait — composes via Laravel's
- *     `setUpTraits()` detection of `RefreshDatabase` in
- *     `class_uses_recursive()`. The trait's `afterRefreshingDatabase()`
- *     hook clears Spatie's permission cache so User::hasRole() sees
- *     freshly-migrated rows, not the stale snapshot from a prior test.
+ * Conventions
+ *   - NO class-level `use RefreshDatabase;` — the parent's
+ *     RefreshDatabaseWithSeed composes it (setUpTraits() detects it via
+ *     class_uses_recursive()) AND overrides beforeRefreshingDatabase()
+ *     to rebind the connection to the isolated `impact_test` DB. A
+ *     second `use RefreshDatabase` at the class level would shadow that
+ *     rebind (PHP trait precedence) and silently run tests against the
+ *     LIVE impact_guest dev DB.
  *   - CSRF bypass inherited from `tests/TestCase.php` via the
  *     `protected $withoutMiddleware = [ValidateCsrfToken::class]`
  *     property (Phase 20 — centralisation). Per-test setUp no longer
@@ -42,15 +44,11 @@ use Tests\TestCase;    /**
  */
 class Phase18OneCredentialPerCellTest extends TestCase
 {
-    // Explicit `use RefreshDatabase;` keeps Laravel's `setUpTraits()` happy
-    // WITHOUT shadowing tests/TestCase.php → RefreshDatabaseWithSeed's
-    // `afterRefreshingDatabase()` hook. The trait's hook already calls
-    // `app(PermissionRegistrar::class)->forgetCachedPermissions()` to clear
-    // Spatie's in-memory permission cache, but we also re-clear it after
-    // seeding so syncRoles(['Impact_Leaders']) in the signup POST finds
-    // the freshly-seeded role by exact-name lookup (not by stale-id
-    // memoised from a previous test in the same process).
-    use RefreshDatabase;
+    // RefreshDatabase is inherited from tests/TestCase → RefreshDatabaseWithSeed,
+    // whose afterRefreshingDatabase() hook clears Spatie's in-memory permission
+    // cache. We re-clear it after seeding so syncRoles(['Impact_Leaders']) in
+    // the signup POST finds the freshly-seeded role by exact-name lookup (not
+    // by stale-id memoised from a previous test in the same process).
 
     protected function setUp(): void
     {

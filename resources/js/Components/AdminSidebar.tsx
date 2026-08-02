@@ -132,11 +132,17 @@ const SECTIONS: Section[] = [
         key: 'impactZonal',
         label: 'Zonal Coordinator',
         items: [
-            { label: 'Dashboard',    href: route('dashboard'),          routeName: 'dashboard',          iconPath: ICON_DASHBOARD },
-            { label: 'Impact Cells', href: route('impact-cells.index'), routeName: 'impact-cells.index', iconPath: ICON_CELLS },
-            { label: 'Guests',       href: route('guests.index'),       routeName: 'guests.index',       iconPath: ICON_USERS },
-            { label: 'Reports',      href: route('reports.index'),      routeName: 'reports.index',      iconPath: ICON_REPORTS },
-            { label: 'Export CSV',   href: route('csv.export'),         routeName: 'csv.export',         iconPath: ICON_DOWNLOAD },
+            { label: 'Dashboard',       href: route('dashboard'),                 routeName: 'dashboard',                 iconPath: ICON_DASHBOARD },
+            // Phase 36 — zonal coordinators are read-only on the Impact Cell
+            // surface. "Cell Activity" (scoped to their assigned cells) +
+            // "Leadership Board" (same scope) replace the old "Reports" item,
+            // which 403'd for zonals (ReportsController::index excludes the
+            // role) and so was a dead sidebar link.
+            { label: 'Impact Cells',    href: route('impact-cells.index'),        routeName: 'impact-cells.index',        iconPath: ICON_CELLS },
+            { label: 'Cell Activity',   href: route('impact-submissions.index'),  routeName: 'impact-submissions.index',  iconPath: ICON_SUBMIT },
+            { label: 'Leadership Board', href: route('leadership.index'),         routeName: 'leadership.index',          iconPath: ICON_CELLS },
+            { label: 'Guests',          href: route('guests.index'),              routeName: 'guests.index',              iconPath: ICON_USERS },
+            { label: 'Export CSV',      href: route('csv.export'),                routeName: 'csv.export',                iconPath: ICON_DOWNLOAD },
         ],
     },
     // Phase 09 — Impact_Cell_Admin (cross-cell + cross-zonal supervisor).

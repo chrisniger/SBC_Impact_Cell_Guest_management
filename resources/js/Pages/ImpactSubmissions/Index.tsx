@@ -1,5 +1,6 @@
 import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
+import ReadOnlyBanner from '@/Components/ReadOnlyBanner';
 import StatusPill from '@/Components/StatusPill';
 import { Head, Link } from '@inertiajs/react';
 
@@ -61,6 +62,14 @@ export default function Index({ submissions, activeRole, canCreate }: { submissi
             }
         >
             <Head title="Impact Submissions" />
+
+            {/* Phase 36 — zonal coordinators view cell activity read-only. */}
+            {activeRole === 'Impact_Zonal_Coordinator' && (
+                <ReadOnlyBanner
+                    testId="impact-submissions-zonal-readonly-banner"
+                    description="Zonal Coordinators can view the activity of their assigned cells but cannot submit reports. Only Impact Cell leaders submit."
+                />
+            )}
 
             {submissions.data.length === 0 ? (
                 <EmptyState

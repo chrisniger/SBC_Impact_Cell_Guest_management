@@ -66,6 +66,14 @@ export default function ImpactCellsIndex({ cells, activeRole }: { cells: ImpactC
                 />
             )}
 
+            {/* Phase 36 — zonal coordinators see ONLY their assigned cells, read-only. */}
+            {activeRole === 'Impact_Zonal_Coordinator' && (
+                <ReadOnlyBanner
+                    testId="impact-cells-zonal-readonly-banner"
+                    description="Zonal Coordinators can view only the Impact Cells assigned to them. This view is read-only — reports and records are submitted by Impact Cell leaders."
+                />
+            )}
+
             {cells.length === 0 ? (
                 <EmptyState
                     title="No impact cells yet"

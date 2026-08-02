@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Guest;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -18,15 +17,15 @@ use Tests\TestCase;
  * failed, Laravel 303-redirected back to the edit form, and the guest name
  * never persisted.
  *
- * Conventions (mirror Phase18OneCredentialPerCellTest):
- *   - Explicit `use RefreshDatabase;` on top of the parent's
- *     RefreshDatabaseWithSeed trait (composes via setUpTraits()).
+ * Conventions:
+ *   - No class-level `use RefreshDatabase;` — the parent's
+ *     RefreshDatabaseWithSeed provides it AND keeps the isolated
+ *     impact_test rebind (a double-use would shadow that rebind).
  *   - RolesAndPermissionsSeeder seeded in setUp() so assignRole resolves.
  *   - CSRF bypass inherited from tests/TestCase.php.
  */
 class GuestNameEditTest extends TestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

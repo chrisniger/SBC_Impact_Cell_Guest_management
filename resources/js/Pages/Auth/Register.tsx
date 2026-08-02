@@ -54,7 +54,7 @@ export default function Register({
 }) {
     const [showPassword, setShowPassword] = useState(false);
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    const { data, setData, post, processing, errors, reset, clearErrors } = useForm({
         name: '',
         email: '',
         password: '',
@@ -74,8 +74,48 @@ export default function Register({
     // impact_cell_id is `required_if Impact_Leaders ∈ roles[]` via Rule::requiredIf.
     const requiresCell = data.roles.includes('Impact_Leaders');
 
-    const submit: FormEventHandler = (e) => {
+    // Inertia's clearErrors is keyed to the form's own field names; the shared
+    // Field helper below only ever passes one of those ids, so adapt the
+    // signature once here instead of casting at every call site.
+    const clearFieldError = (field: string) =>
+        clearErrors(field as keyof typeof data);
+
+    const submit: FormEventHandler<HTMLFormElement> = (e) => {
         e.preventDefault();
+
+        // Browser autofill (Chrome saved addresses / password manager) can
+        // populate the DOM inputs WITHOUT firing React's onChange, so the
+        // controlled state here can lag behind what the user actually sees
+        // in the fields. FormData reads the LIVE DOM values, so we merge
+        // them into the payload before posting — otherwise a visibly-filled
+        // (but autofilled) name/email submits as empty and the server rejects
+        // the form with "The name field is required" / "The email field is
+        // required" even though the user filled the fields in.
+        //
+        // Safe for normal typing too: for typed input the DOM value already
+        // matches state, so the merge is a no-op for those fields.
+        const fd = new FormData(e.currentTarget);
+        setData((prev) => ({
+            ...prev,
+            name: String(fd.get('name') ?? prev.name),
+            email: String(fd.get('email') ?? prev.email),
+            password: String(fd.get('password') ?? prev.password),
+            password_confirmation: String(
+                fd.get('password_confirmation') ?? prev.password_confirmation,
+            ),
+            impact_cell_id: String(fd.get('impact_cell_id') ?? prev.impact_cell_id),
+            leader_name: String(fd.get('leader_name') ?? prev.leader_name),
+            leader_phone: String(fd.get('leader_phone') ?? prev.leader_phone),
+            assistant_name: String(fd.get('assistant_name') ?? prev.assistant_name),
+            assistant_phone: String(fd.get('assistant_phone') ?? prev.assistant_phone),
+            welfare_officer_name: String(
+                fd.get('welfare_officer_name') ?? prev.welfare_officer_name,
+            ),
+            welfare_officer_phone: String(
+                fd.get('welfare_officer_phone') ?? prev.welfare_officer_phone,
+            ),
+        }));
+
         post(route('register'), {
             onFinish: () => reset('password', 'password_confirmation'),
         });
@@ -96,6 +136,16 @@ export default function Register({
                 ? data.active_role
                 : (next[0] ?? ''),
         });
+        // Drop stale role errors ('Pick at least one role.', 'That role is
+        // not available for self-signup.') as soon as the user changes the
+        // selection — the server keys array-rule failures per-index
+        // (roles.0, roles.1, …), so clear every roles-prefixed key.
+        const roleErrorKeys = Object.keys(errors).filter(
+            (k) => k === 'roles' || k.startsWith('roles.'),
+        );
+        if (roleErrorKeys.length > 0) {
+            clearErrors(...(roleErrorKeys as (keyof typeof data)[]));
+        }
     };
 
     return (
@@ -121,6 +171,7 @@ export default function Register({
                         label="Full name"
                         value={data.name}
                         onChange={(v) => setData('name', v)}
+                        onClearError={clearFieldError}
                         required
                         autoComplete="name"
                         placeholder="Jane Doe"
@@ -132,6 +183,7 @@ export default function Register({
                         type="email"
                         value={data.email}
                         onChange={(v) => setData('email', v)}
+                        onClearError={clearFieldError}
                         required
                         autoComplete="username"
                         placeholder="you@impact.test"
@@ -155,7 +207,10 @@ export default function Register({
                                 className="block w-full pl-10 pr-10"
                                 autoComplete="new-password"
                                 placeholder="Choose a strong password"
-                                onChange={(e) => setData('password', e.target.value)}
+                                onChange={(e) => {
+                                    setData('password', e.target.value);
+                                    clearErrors('password');
+                                }}
                                 required
                             />
                             <button
@@ -186,6 +241,7 @@ export default function Register({
                         type="password"
                         value={data.password_confirmation}
                         onChange={(v) => setData('password_confirmation', v)}
+                        onClearError={clearFieldError}
                         required
                         autoComplete="new-password"
                         placeholder="Re-enter your password"
@@ -264,7 +320,10 @@ export default function Register({
                                     id="impact_cell_id"
                                     name="impact_cell_id"
                                     value={data.impact_cell_id}
-                                    onChange={(e) => setData('impact_cell_id', e.target.value)}
+                                    onChange={(e) => {
+                                        setData('impact_cell_id', e.target.value);
+                                        clearErrors('impact_cell_id');
+                                    }}
                                     required
                                     aria-describedby="register-impact-cell-help"
                                     className={`block w-full rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 dark:bg-gray-800 dark:text-gray-100 ${
@@ -299,6 +358,7 @@ export default function Register({
                                         label="Leader name"
                                         value={data.leader_name}
                                         onChange={(v) => setData('leader_name', v)}
+                                        onClearError={clearFieldError}
                                         placeholder="Adebayo Smith"
                                         error={errors.leader_name}
                                         inputClassName="bg-white dark:bg-gray-800"
@@ -309,6 +369,7 @@ export default function Register({
                                         label="Leader phone"
                                         value={data.leader_phone}
                                         onChange={(v) => setData('leader_phone', v)}
+                                        onClearError={clearFieldError}
                                         placeholder="+234 800 000 0001"
                                         error={errors.leader_phone}
                                         inputClassName="bg-white dark:bg-gray-800"
@@ -319,6 +380,7 @@ export default function Register({
                                         label="Assistant name"
                                         value={data.assistant_name}
                                         onChange={(v) => setData('assistant_name', v)}
+                                        onClearError={clearFieldError}
                                         placeholder="Jane Doe"
                                         error={errors.assistant_name}
                                         inputClassName="bg-white dark:bg-gray-800"
@@ -328,6 +390,7 @@ export default function Register({
                                         label="Assistant phone"
                                         value={data.assistant_phone}
                                         onChange={(v) => setData('assistant_phone', v)}
+                                        onClearError={clearFieldError}
                                         placeholder="+234 800 000 0002"
                                         error={errors.assistant_phone}
                                         inputClassName="bg-white dark:bg-gray-800"
@@ -337,6 +400,7 @@ export default function Register({
                                         label="Welfare officer name"
                                         value={data.welfare_officer_name}
                                         onChange={(v) => setData('welfare_officer_name', v)}
+                                        onClearError={clearFieldError}
                                         placeholder="Mary Johnson"
                                         error={errors.welfare_officer_name}
                                         inputClassName="bg-white dark:bg-gray-800"
@@ -346,6 +410,7 @@ export default function Register({
                                         label="Welfare officer phone"
                                         value={data.welfare_officer_phone}
                                         onChange={(v) => setData('welfare_officer_phone', v)}
+                                        onClearError={clearFieldError}
                                         placeholder="+234 800 000 0003"
                                         error={errors.welfare_officer_phone}
                                         inputClassName="bg-white dark:bg-gray-800"
@@ -431,6 +496,7 @@ function Field({
     label,
     value,
     onChange,
+    onClearError,
     type = 'text',
     required = false,
     autoComplete,
@@ -442,6 +508,7 @@ function Field({
     label: string;
     value: string;
     onChange: (v: string) => void;
+    onClearError?: (field: string) => void;
     type?: string;
     required?: boolean;
     autoComplete?: string;
@@ -457,7 +524,14 @@ function Field({
                 name={id}
                 type={type}
                 value={value}
-                onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => {
+                    onChange(e.target.value);
+                    // Inertia keeps validation errors on screen until the next
+                    // submit — clear the field's own error as soon as the user
+                    // edits it, so "required" messages don't linger after the
+                    // user has already filled the field in.
+                    onClearError?.(id);
+                }}
                 className={`block w-full ${inputClassName ?? ''}`}
                 autoComplete={autoComplete}
                 placeholder={placeholder}

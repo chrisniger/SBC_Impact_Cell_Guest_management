@@ -5,13 +5,11 @@ namespace Tests\Feature;
 use App\Models\ImpactCell;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminUserCellAssignmentTest extends TestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -251,6 +249,81 @@ class AdminUserCellAssignmentTest extends TestCase
             [$second->id],
             $zonal->fresh()->zonalImpactCells()->pluck('impact_cells.id')->all(),
         );
+    }
+
+    public function test_admin_can_inline_update_zonal_cell_assignments_from_table_row(): void
+    {
+        $admin = $this->admin();
+        $first = $this->cell('Inline Zonal Cell A');
+        $second = $this->cell('Inline Zonal Cell B');
+        $zonal = User::factory()->create([
+            'active_role' => 'Impact_Zonal_Coordinator',
+        ]);
+        $zonal->assignRole('Impact_Zonal_Coordinator');
+        $zonal->zonalImpactCells()->sync([$first->id]);
+
+        $response = $this->actingAs($admin)
+            ->from(route('admin.users.index'))
+            ->patch(route('admin.users.update-zonal-cells', $zonal), [
+                'zonal_impact_cell_ids' => [$first->id, $second->id],
+            ]);
+
+        $response->assertRedirect(route('admin.users.index'));
+        $this->assertEqualsCanonicalizing(
+            [$first->id, $second->id],
+            $zonal->fresh()->zonalImpactCells()->pluck('impact_cells.id')->all(),
+        );
+    }
+
+    public function test_inline_zonal_cell_update_rejects_non_primary_cell(): void
+    {
+        $admin = $this->admin();
+        $primary = $this->cell('Inline Primary Cell');
+        $nonPrimary = ImpactCell::create([
+            'id' => (string) Str::uuid(),
+            'name' => 'Inline Non-primary Cell',
+            'parent_cell_id' => $primary->id,
+            'is_primary' => false,
+            'order' => 1,
+        ]);
+        $zonal = User::factory()->create([
+            'active_role' => 'Impact_Zonal_Coordinator',
+        ]);
+        $zonal->assignRole('Impact_Zonal_Coordinator');
+        $zonal->zonalImpactCells()->sync([$primary->id]);
+
+        $response = $this->actingAs($admin)
+            ->from(route('admin.users.index'))
+            ->patch(route('admin.users.update-zonal-cells', $zonal), [
+                'zonal_impact_cell_ids' => [$nonPrimary->id],
+            ]);
+
+        // Validation errors arrive per-index (same wire shape as the Add
+        // modal's errorsForArr handling on the frontend).
+        $response->assertSessionHasErrors('zonal_impact_cell_ids.0');
+        $this->assertSame(
+            [$primary->id],
+            $zonal->fresh()->zonalImpactCells()->pluck('impact_cells.id')->all(),
+        );
+    }
+
+    public function test_inline_zonal_cell_update_rejects_non_zonal_user(): void
+    {
+        $admin = $this->admin();
+        $cell = $this->cell('Inline Leader Cell');
+        $leader = User::factory()->create([
+            'active_role' => 'Impact_Leaders',
+            'impact_cell_id' => $cell->id,
+        ]);
+        $leader->assignRole('Impact_Leaders');
+
+        $response = $this->actingAs($admin)
+            ->patch(route('admin.users.update-zonal-cells', $leader), [
+                'zonal_impact_cell_ids' => [$cell->id],
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame([], $leader->fresh()->zonalImpactCells()->pluck('impact_cells.id')->all());
     }
 
     private function admin(): User

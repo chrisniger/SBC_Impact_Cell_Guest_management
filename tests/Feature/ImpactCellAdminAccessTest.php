@@ -6,7 +6,6 @@ use App\Models\ImpactCell;
 use App\Models\ImpactSubmission;
 use App\Models\User;
 use App\Support\RoleHelper;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -46,7 +45,6 @@ use Tests\TestCase;
  */
 class ImpactCellAdminAccessTest extends TestCase
 {
-    use RefreshDatabase;
 
     public function test_impact_cell_admin_sees_cross_cell_dashboard(): void
     {

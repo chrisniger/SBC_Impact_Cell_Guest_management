@@ -27,7 +27,12 @@ class ImpactSubmissionController extends Controller
         $query = ImpactSubmission::with(['impactCell:id,name', 'user:id,name'])
             ->orderByDesc('created_at');
 
-        if (RoleHelper::isImpactCellAdmin($role)) {
+        if ($role === 'Impact_Zonal_Coordinator') {
+            // Phase 36 — Zonal Coordinators are read-only viewers: they see
+            // the full activity feed for the cells assigned to them (they
+            // cannot submit, so an own-submissions filter would be empty).
+            $query->whereIn('impact_cell_id', $user->zonalImpactCellIds());
+        } elseif (RoleHelper::isImpactCellAdmin($role)) {
             // Phase 09 — cross-cell supervisor scope: every submission by any
             // user whose active_role ∈ GROUP_IMPACT_CELL (leaders, cell admins,
             // cell report, zonal coordinator).
@@ -41,12 +46,21 @@ class ImpactSubmissionController extends Controller
         return Inertia::render('ImpactSubmissions/Index', [
             'submissions' => $submissions,
             'activeRole'  => $role,
-            'canCreate'   => $role === 'Administrator' || $group === 'impactCell',
+            // Phase 36 — zonals cannot create submissions (read-only).
+            'canCreate'   => $role !== 'Impact_Zonal_Coordinator'
+                && ($role === 'Administrator' || $group === 'impactCell'),
         ]);
     }
 
     public function create(Request $request): Response
     {
+        // Phase 36 — zonals cannot submit reports (read-only role).
+        abort_if(
+            $request->user()?->activeRole() === 'Impact_Zonal_Coordinator',
+            403,
+            'Zonal Coordinators can view cell activity but cannot submit reports.',
+        );
+
         $type = $request->get('type', 'member');
         if (! in_array($type, self::TYPES, true)) $type = 'member';
 
@@ -73,6 +87,12 @@ class ImpactSubmissionController extends Controller
         $user = $request->user();
         $role = $user?->activeRole();
         $group = RoleHelper::groupOf($role);
+
+        // Phase 36 — Impact_Zonal_Coordinator sits inside the impactCell
+        // group but is read-only: it may view activity, never submit.
+        if ($role === 'Impact_Zonal_Coordinator') {
+            abort(403, 'Zonal Coordinators can view cell activity but cannot submit reports.');
+        }
 
         if ($role !== 'Administrator' && $group !== 'impactCell') {
             abort(403, 'Only Impact Cell leaders can submit.');
@@ -123,9 +143,22 @@ class ImpactSubmissionController extends Controller
             ->with('success', ucfirst($validated['type']) . ' submission created.');
     }
 
-    public function show(string $id): Response
+    public function show(Request $request, string $id): Response
     {
         $submission = ImpactSubmission::with(['impactCell:id,name', 'user:id,name'])->findOrFail($id);
+
+        // Phase 36 — defense-in-depth for the zonal read-only scope: the
+        // index() list is filtered to assigned cells, but the detail page
+        // must not be deep-linkable for a cell the zonal doesn't cover.
+        if ($request->user()?->activeRole() === 'Impact_Zonal_Coordinator') {
+            $isAssigned = in_array(
+                $submission->impact_cell_id,
+                $request->user()->zonalImpactCellIds(),
+                true,
+            );
+            abort_unless($isAssigned, 403, 'You can only view activity for Impact Cells assigned to you.');
+        }
+
         return Inertia::render('ImpactSubmissions/Show', [
             'submission' => $submission,
         ]);
@@ -145,13 +178,18 @@ class ImpactSubmissionController extends Controller
             return response()->json([]);
         }
 
-        $results = ImpactSubmission::where('type', 'soul')
+        $query = ImpactSubmission::where('type', 'soul')
             ->where('data', 'like', "%{$q}%")
             ->with(['impactCell:id,name'])
-            ->orderByDesc('created_at')
-            ->limit(20)
-            ->get()
-            ->map(fn ($s) => [
+            ->orderByDesc('created_at');
+
+        // Phase 36 — zonal coordinators search only within their assigned
+        // cells (Soul Search surfaces cell-activity data).
+        if ($request->user()?->activeRole() === 'Impact_Zonal_Coordinator') {
+            $query->whereIn('impact_cell_id', $request->user()->zonalImpactCellIds());
+        }
+
+        $results = $query->limit(20)->get()->map(fn ($s) => [
                 'id'           => $s->id,
                 'name'         => $s->data['full_name'] ?? $s->data['name'] ?? null,
                 'phone'        => $s->data['phone'] ?? null,
@@ -211,7 +249,11 @@ class ImpactSubmissionController extends Controller
         $query = ImpactSubmission::with(['impactCell:id,name'])
             ->orderByDesc('created_at');
 
-        if (RoleHelper::isImpactCellAdmin($role)) {
+        if ($role === 'Impact_Zonal_Coordinator') {
+            // Phase 36 — zonal coordinators view all activity for their
+            // assigned cells (they have no own submissions to show).
+            $query->whereIn('impact_cell_id', $user->zonalImpactCellIds());
+        } elseif (RoleHelper::isImpactCellAdmin($role)) {
             // Cross-cell admin scope: every submission by any user whose
             // active_role ∈ GROUP_IMPACT_CELL.
             $query->whereHas('user', fn ($q) => $q->whereIn('active_role', RoleHelper::GROUP_IMPACT_CELL));

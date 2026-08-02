@@ -85,6 +85,13 @@ class LeadershipBoardController extends Controller
             }
         }
 
+        // Phase 36 — zonal coordinators only see boards for cells assigned
+        // to them (admin-managed impact_cell_user pivot).
+        if ($role === 'Impact_Zonal_Coordinator') {
+            $isAssigned = $user->zonalImpactCells()->whereKey($cell->id)->exists();
+            abort_unless($isAssigned, 403, 'You are not assigned to this primary.');
+        }
+
         // Phase 13b — flat-cell world. The primary IS its own (and only) tile;
         // pass it as a single-element collection so buildBoardData() computes
         // members / souls / childbirths / report-status against direct
@@ -130,8 +137,12 @@ class LeadershipBoardController extends Controller
             $primaries = $userPrimaryIds === []
                 ? collect()
                 : ImpactCell::primary()->whereIn('id', $userPrimaryIds)->ordered()->get();
+        } elseif ($role === 'Impact_Zonal_Coordinator') {
+            // Phase 36 — zonal coordinators see ONLY the boards for the
+            // cells assigned to them (read-only view of cell activity).
+            $primaries = ImpactCell::primary()->whereIn('id', $user->zonalImpactCellIds())->ordered()->get();
         } else {
-            // Administrator / Impact_Cell_Admin / Impact_Cell_Report / Impact_Zonal_Coordinator → all primaries
+            // Administrator / Impact_Cell_Admin / Impact_Cell_Report → all primaries
             $primaries = ImpactCell::primary()->ordered()->get();
         }
 

@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use FilesystemIterator;
 use Illuminate\Support\Facades\DB;
 use PDO;
 use PDOException;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use Tests\TestCase;
 
 /**
@@ -78,5 +81,46 @@ class DbIsolationGuardTest extends TestCase
             $count,
             'impact_guest (live dev DB) was wiped by a test run — isolation is broken.'
         );
+    }
+
+    /**
+     * Regression guard — no Feature test may re-declare `use RefreshDatabase`.
+     *
+     * The base Tests\TestCase already composes RefreshDatabaseWithSeed
+     * (RefreshDatabase + the beforeRefreshingDatabase() rebind that keeps
+     * the suite on the isolated `impact_test` DB). Adding a second
+     * `use RefreshDatabase` at the class level makes PHP's trait
+     * precedence pick the EMPTY base-trait beforeRefreshingDatabase()
+     * over the rebind override, so that class silently runs against the
+     * LIVE impact_guest dev DB — the root cause of the order-dependent
+     * full-suite failures (Duplicate entry on canonical cell names,
+     * cellsList count assertions, etc.).
+     */
+    public function test_no_feature_test_redeclares_refresh_database(): void
+    {
+        $featureDir = dirname(__DIR__) . '/Feature';
+        $violations = [];
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($featureDir, FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            foreach (file($file->getPathname(), FILE_IGNORE_NEW_LINES) as $line) {
+                // Class-body trait use (indented) or a top-level import.
+                // (PCRE2 on Windows rejects \F-style escapes, so the FQN is
+                // matched with a tolerant .* instead of escaped backslashes.)
+                if (preg_match('/^\s*use\s+Illuminate.*RefreshDatabase\s*;\s*$/', $line)
+                    || preg_match('/^\s{4}use\s+RefreshDatabase\s*;\s*$/', $line)) {
+                    $violations[] = $file->getFilename() . ': ' . trim($line);
+                }
+            }
+        }
+
+        $this->assertSame([], $violations, 'Remove the redundant RefreshDatabase use from: ' . PHP_EOL . implode(PHP_EOL, $violations));
     }
 }

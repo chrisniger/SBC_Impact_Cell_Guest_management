@@ -231,6 +231,14 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
                     />
                 )}
 
+                {/* Phase 36 — zonal coordinators: view-only on assigned cells. */}
+                {activeRole === 'Impact_Zonal_Coordinator' && (
+                    <ReadOnlyBanner
+                        testId="impact-cell-detail-zonal-readonly-banner"
+                        description="Zonal Coordinators can view this cell's activity but cannot edit its details, leadership team, or sub-cells."
+                    />
+                )}
+
                 {/* Hero band */}
                 <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-blue-50 p-6 shadow-card dark:border-indigo-900/40 dark:from-indigo-950/40 dark:via-gray-900 dark:to-blue-950/40">
                     <div className="flex flex-wrap items-start justify-between gap-4">

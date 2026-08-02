@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -29,7 +28,6 @@ use Tests\TestCase;
  */
 class StubGateTest extends TestCase
 {
-    use RefreshDatabase;
 
     /** Routes that the GateStubPagesByEnvironment middleware lists in its GATED_ROUTES const. */
     private const GATED_ROUTES = [

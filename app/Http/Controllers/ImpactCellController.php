@@ -40,8 +40,21 @@ class ImpactCellController extends Controller
     {
         $request->validate(['hierarchy' => ['nullable', 'boolean']]);
 
+        $role = $request->user()?->activeRole();
+
+        $cellsQuery = ImpactCell::with('parent')->ordered();
+
+        // Phase 36 — Impact_Zonal_Coordinator is a READ-ONLY viewer of the
+        // Impact Cells surface: they only ever see the cells Admin assigned
+        // to them (via the impact_cell_user pivot). Every other role keeps
+        // the full network list (Admins manage it; Impact_Leaders read the
+        // whole map as part of the outreach grid).
+        if ($role === 'Impact_Zonal_Coordinator') {
+            $cellsQuery->whereIn('id', $request->user()->zonalImpactCellIds());
+        }
+
         return Inertia::render('ImpactCells/Index', [
-            'cells'        => ImpactCell::with('parent')->ordered()->get(),
+            'cells'        => $cellsQuery->get(),
             'hierarchy'    => (bool) $request->input('hierarchy', false),
             'totalCount'   => ImpactCell::count(),
             'primaryCount' => ImpactCell::where('is_primary', true)->count(),
@@ -76,6 +89,14 @@ class ImpactCellController extends Controller
             'subCells' => fn ($q) => $q->orderBy('name'),
             'leaderUsers' => fn ($q) => $q->orderBy('name'),
         ])->findOrFail($id);
+
+        // Phase 36 — defense-in-depth for the zonal read-only scope: the
+        // index() list is already filtered to assigned cells, but a zonal
+        // must not be able to deep-link into a cell they don't cover.
+        if ($request->user()?->activeRole() === 'Impact_Zonal_Coordinator') {
+            $isAssigned = $request->user()->zonalImpactCells()->whereKey($cell->id)->exists();
+            abort_unless($isAssigned, 403, 'You can only view Impact Cells assigned to you.');
+        }
 
         // Phase 17 — Sub-cells editor payload. Only shown on Show page
         // when the cell is itself primary AND the actor is admin (gated
