@@ -72,7 +72,11 @@ class StubGateTest extends TestCase
 
         $admin = User::factory()->create([
             'name'        => 'Test Admin',
-            'email'       => 'gate-test-admin@impact.test',
+            // uniqid suffix — the fixed base email collided across the 5 env-loop
+            // tests in one run (users.users_email_unique) because this env runs
+            // against the dev DB without per-test rollback (see MessagesAdminTest
+            // for the same convention).
+            'email'       => 'gate-test-admin.' . uniqid() . '@impact.test',
             'password'    => 'GateTest##101',           // hashed via cast
             'active_role' => 'Administrator',
         ])->assignRole('Administrator');

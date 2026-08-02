@@ -55,7 +55,7 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
-        "test-local": "bash -c 'php artisan config:clear --ansi && php artisan test $@ && php artisan db:seed && php artisan roles:audit --json'",
+        "test-local": "bash -c 'php artisan config:clear --ansi && php artisan test $@ && php artisan seed:canonical && php artisan roles:audit --json'",
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

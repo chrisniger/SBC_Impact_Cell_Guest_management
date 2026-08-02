@@ -46,6 +46,11 @@ class ImpactCellController extends Controller
             'totalCount'   => ImpactCell::count(),
             'primaryCount' => ImpactCell::where('is_primary', true)->count(),
             'subCellCount' => ImpactCell::where('is_primary', false)->count(),
+            // Admin chrome gate — without this, the React page's
+            // `activeRole` prop arrives undefined and the "Add new cell"
+            // button (gated on Administrator after Phase 35) never
+            // renders. Matches the create()/show() payloads.
+            'activeRole'   => $request->user()?->activeRole(),
         ]);
     }
 
@@ -64,7 +69,7 @@ class ImpactCellController extends Controller
      * per render. The Show page mapping mirrors Laravel's default `toArray()`
      * snake-casing (leaderUsers → leader_users).
      */
-    public function show(string $id): Response
+    public function show(Request $request, string $id): Response
     {
         $cell = ImpactCell::with([
             'parent',
@@ -96,6 +101,20 @@ class ImpactCellController extends Controller
         return Inertia::render('ImpactCells/Show', [
             'cell'             => $cell,
             'attachablePrims'  => $attachablePrims,
+            // Same gate as index() — the Show page's admin-only toggles
+            // (Edit details / Edit leadership team / Manage sub-cells) are
+            // gated on this prop; without it they silently never appear.
+            'activeRole'       => $request->user()?->activeRole(),
+            // Phase 32 + Phase 35 — server-computed edit gates (single
+            // source of truth: the policy, not the React-side role string).
+            // `canEditDetails` = ImpactCellPolicy::update (Administrator
+            // only after Phase 35), which owns the cell name + hierarchy —
+            // leaders NEVER get it. `canEditLeadership` =
+            // ImpactCellPolicy::updateLeadership (Administrator on any
+            // cell, or an assigned Impact_Leaders on their OWN cell) —
+            // gates the leadership-team editor only.
+            'canEditDetails'     => $request->user()?->can('update', $cell) ?? false,
+            'canEditLeadership'  => $request->user()?->can('updateLeadership', $cell) ?? false,
         ]);
     }
 
@@ -143,8 +162,44 @@ class ImpactCellController extends Controller
         // admins via the Sub-cells editor card.
         $cell->update($data);
 
-        return redirect()->route('impact-cells.index')
+        // Phase 32 — redirect BACK to the Show page (not the index list).
+        // Root cause of the user's "Details are not saving" report was
+        // partly UX: the old redirect landed the admin on the flat index
+        // page, so a successful details save was never visibly confirmed
+        // on the cell they were editing. Staying on the cell makes the
+        // change immediately visible and matches the new leadership
+        // endpoint's `back()` behaviour.
+        return redirect()->route('impact-cells.show', $cell)
             ->with('success', "Updated cell {$cell->name}.");
+    }
+
+    /**
+     * PUT /impact-cells/{id}/leadership — leadership-team ONLY write.
+     *
+     * Phase 32 — split the single fat `update()` PUT into a dedicated
+     * leadership endpoint. Root cause of the "leadership team not saving"
+     * bug: the React leadership form sent ONLY the 6 free-text leadership
+     * fields to /impact-cells/{id}, but `validateCell()` requires `name`
+     * + `is_primary`, so every save 303'd back with unreachable validation
+     * errors and nothing persisted.
+     *
+     * This endpoint accepts ONLY the 6 leadership columns (all nullable)
+     * and updates ONLY those — the cell name / hierarchy are physically
+     * unreachable here, which is what lets an assigned Impact_Leaders edit
+     * their own team WITHOUT being able to rename the cell. The full
+     * `update()` (name + hierarchy) stays gated behind
+     * ImpactCellPolicy::update (Administrator only — Phase 35).
+     */
+    public function updateLeadership(Request $request, string $id): RedirectResponse
+    {
+        $cell = ImpactCell::findOrFail($id);
+        $this->authorize('updateLeadership', $cell);
+
+        $data = $request->validate(self::leadershipRules());
+
+        $cell->update($data);
+
+        return back()->with('success', "Leadership team for {$cell->name} updated.");
     }
 
     /**
@@ -173,8 +228,8 @@ class ImpactCellController extends Controller
      * THIS cell's id. Server-side guards:
      *   - child cannot be self (no self-loops)
      *   - child cannot already be a sub-cell of another primary (409)
-     *   - parent must authorize update (admin OR ICA)
-     *   - child must also authorize update (admin OR ICA) — both rows
+     *   - parent must authorize update (Administrator)
+     *   - child must also authorize update (Administrator) — both rows
      *     change, so both gates must pass
      */
     public function attachSubCell(Request $request, string $id): RedirectResponse
@@ -295,25 +350,37 @@ class ImpactCellController extends Controller
      */
     private function validateCell(Request $request, ?ImpactCell $existing = null): array
     {
-        return $request->validate([
+        // Phase 32 — array_merge so the shared leadershipRules() are the
+        // single source of truth: a future 7th leadership key automatically
+        // lands in BOTH the fat details PUT and the dedicated leadership PUT.
+        return $request->validate(array_merge(self::leadershipRules(), [
             'name'                 => ['required', 'string', 'max:255', 'unique:impact_cells,name' . ($existing ? ',' . $existing->id : '')],
             'phone'                => ['nullable', 'string', 'max:32'],
             'address'              => ['nullable', 'string', 'max:255'],
+            'parent_cell_id'       => ['required_if:is_primary,false', 'nullable', 'uuid', 'exists:impact_cells,id'],
+            'is_primary'           => ['required', 'boolean'],
+            'order'                => ['nullable', 'integer', 'min:0'],
+        ]));
+    }
 
-            // Phase 13 — free-text leadership team columns. Nullable; admin can
-            // edit any subset (none / leader only / full team). The 32-char cap
-            // on phone mirrors the existing `phone` column and stays short to
-            // fit the admin chrome without horizontal scrolling on tablet.
+    /**
+     * Phase 32 — shared validation rules for the 6 free-text leadership
+     * columns. Single source of truth consumed by BOTH the fat
+     * `validateCell()` (details PUT) and the dedicated
+     * `updateLeadership()` (leadership PUT) so a max-length tweak can
+     * never drift between the two paths.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private static function leadershipRules(): array
+    {
+        return [
             'leader_name'          => ['nullable', 'string', 'max:255'],
             'leader_phone'         => ['nullable', 'string', 'max:32'],
             'assistant_name'       => ['nullable', 'string', 'max:255'],
             'assistant_phone'      => ['nullable', 'string', 'max:32'],
             'welfare_officer_name' => ['nullable', 'string', 'max:255'],
             'welfare_officer_phone'=> ['nullable', 'string', 'max:32'],
-
-            'parent_cell_id'       => ['required_if:is_primary,false', 'nullable', 'uuid', 'exists:impact_cells,id'],
-            'is_primary'           => ['required', 'boolean'],
-            'order'                => ['nullable', 'integer', 'min:0'],
-        ]);
+        ];
     }
 }

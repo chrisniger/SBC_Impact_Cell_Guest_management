@@ -73,6 +73,12 @@ class GuestController extends Controller
                 $role === 'Administrator'
                 || in_array($role, ['FollowUpOfficer', 'Follow_UP_Admin'], true)
             ),
+            // Same gate as show() — lets the Index table render a per-row
+            // Edit action for any role that can write at least one field
+            // (Administrator always qualifies). Without it the Index page
+            // had no edit entry point, forcing admins to open each guest's
+            // Show page first.
+            'editableFields' => $this->computeEditableKeysForRole($role),
             'activeRole' => $role,
             'groups'     => [
                 'ownedByGroup' => RoleHelper::allGroupOwnedFields(),

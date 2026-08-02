@@ -17,6 +17,17 @@
             <directory>app</directory>
         </include>
     </source>
+    <!--
+        Phase 31 — post-test reseed safety net. Fires `php artisan
+        seed:canonical` on TestRunner\Finished so seeded credentials
+        always survive any test run. See
+        tests/Support/ReseedAfterTestRun.php for the child-process
+        rationale (must re-assert .env dev DB values because PHPUnit's
+        forced env vars would otherwise leak into the child).
+    -->
+    <extensions>
+        <bootstrap class="Tests\Support\ReseedAfterTestRun"/>
+    </extensions>
     <php>
         <!--
             Phase 26 — defensively forced env vars.

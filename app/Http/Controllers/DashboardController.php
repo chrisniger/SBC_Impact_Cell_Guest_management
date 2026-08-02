@@ -6,6 +6,7 @@ use App\Models\Guest;
 use App\Models\ImpactCell;
 use App\Models\ImpactSubmission;
 use App\Models\User;
+use App\Support\AnalyticsService;
 use App\Support\RoleHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -144,6 +145,7 @@ class DashboardController extends Controller
                 ->all(),
             'activeRole'  => $role,
             'activeGroup' => 'followUpOfficer',
+            'announcements' => $this->announcementsPayload(),
         ]);
     }
 
@@ -227,6 +229,7 @@ class DashboardController extends Controller
                 ->all(),
             'activeRole'  => $role,
             'activeGroup' => 'followUpTeam',
+            'announcements' => $this->announcementsPayload(),
         ]);
     }
 
@@ -325,6 +328,7 @@ class DashboardController extends Controller
             'canEditImpactStatus' => $canEditImpactStatus,
             'activeRole'     => $role,
             'activeGroup'    => 'impactCell',
+            'announcements'  => $this->announcementsPayload(),
         ]);
     }
 
@@ -421,6 +425,7 @@ class DashboardController extends Controller
             'globalSearchIndex'  => $this->buildGlobalSearchIndex($user, $role, 'impactCell'),
             'activeRole'         => $role,
             'activeGroup'        => 'impactCell',
+            'announcements'      => $this->announcementsPayload(),
         ]);
     }
 
@@ -466,6 +471,7 @@ class DashboardController extends Controller
             'zonalSubmissions'    => $submissions,
             'activeRole'          => $role,
             'activeGroup'         => 'impactCell',
+            'announcements'       => $this->announcementsPayload(),
         ]);
     }
 
@@ -566,6 +572,7 @@ class DashboardController extends Controller
             'leadershipRollup'    => $this->buildLeadershipRollup(),
             'activeRole'  => $role,
             'activeGroup' => $group,
+            'announcements' => $this->announcementsPayload(),
         ]);
     }
 
@@ -707,12 +714,7 @@ class DashboardController extends Controller
      */
     private function kpiDelta($query, $currStart, $now, $priorStart): array
     {
-        $curr  = (clone $query)->where('created_at', '>=', $currStart)->count();
-        $prior = (clone $query)->where('created_at', '>=', $priorStart)->where('created_at', '<', $currStart)->count();
-        $pct = $prior > 0
-            ? round((($curr - $prior) / $prior) * 100, 1)
-            : ($curr > 0 ? 100.0 : 0.0);
-        return ['value' => (float) $pct, 'positiveIsGood' => true];
+        return app(AnalyticsService::class)->kpiDelta($query, $currStart, $now, $priorStart);
     }
 
     /**
@@ -724,19 +726,7 @@ class DashboardController extends Controller
      */
     private function kpiSeries($query, $now, int $days): array
     {
-        $start = $now->copy()->subDays($days - 1)->startOfDay();
-        $rows = (clone $query)->where('created_at', '>=', $start)->get(['created_at']);
-        $buckets = array_fill(0, $days, 0);
-        $idx = 0;
-        foreach ($rows as $r) {
-            $offset = (int) floor($start->diffInDays($r->created_at));
-            if ($offset >= 0 && $offset < $days) {
-                $buckets[$offset]++;
-            }
-            $idx++;
-            if ($idx > 50000) break; // defensive ceiling
-        }
-        return $buckets;
+        return app(AnalyticsService::class)->kpiSeries($query, $now, $days);
     }
 
     /**
@@ -756,104 +746,7 @@ class DashboardController extends Controller
      */
     private function parseRange(Request $request): array
     {
-        $allowed = ['today', 'week', 'month', 'year', 'custom'];
-        $range = (string) $request->query('range', 'week');
-        if (! in_array($range, $allowed, true)) {
-            $range = 'week';
-        }
-
-        $now = now();
-        $from = $now->copy()->subHours(23)->startOfHour();
-        $to = $now->copy()->endOfHour();
-        $labels = [];
-        $bucketCount = 24;
-        $bucketUnit = 'hour';
-
-        switch ($range) {
-            case 'today':
-                $bucketCount = 24;
-                $bucketUnit = 'hour';
-                $from = $now->copy()->subHours(23)->startOfHour();
-                $to = $now->copy()->endOfHour();
-                for ($i = 23; $i >= 0; $i--) {
-                    $labels[] = $now->copy()->subHours($i)->format('H:00');
-                }
-                break;
-
-            case 'week':
-                $bucketCount = 7;
-                $bucketUnit = 'day';
-                $from = $now->copy()->subDays(6)->startOfDay();
-                $to = $now->copy()->endOfDay();
-                for ($i = 6; $i >= 0; $i--) {
-                    $labels[] = $now->copy()->subDays($i)->format('M j');
-                }
-                break;
-
-            case 'month':
-                $bucketCount = 30;
-                $bucketUnit = 'day';
-                $from = $now->copy()->subDays(29)->startOfDay();
-                $to = $now->copy()->endOfDay();
-                for ($i = 29; $i >= 0; $i--) {
-                    $labels[] = $now->copy()->subDays($i)->format('M j');
-                }
-                break;
-
-            case 'year':
-                $bucketCount = 12;
-                $bucketUnit = 'month';
-                $from = $now->copy()->subMonths(11)->startOfMonth();
-                $to = $now->copy()->endOfMonth();
-                for ($i = 11; $i >= 0; $i--) {
-                    $labels[] = $now->copy()->subMonths($i)->format('M Y');
-                }
-                break;
-
-            case 'custom':
-                $fromStr = (string) $request->query('from', '');
-                $toStr = (string) $request->query('to', '');
-                if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromStr)
-                    || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $toStr)) {
-                    return $this->parseRange(new Request(['range' => 'week']));
-                }
-                $customFrom = \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $fromStr)->startOfDay();
-                $customTo = \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $toStr)->endOfDay();
-                if ($customFrom->gt($customTo) || $customFrom->diffInDays($customTo) > 365) {
-                    return $this->parseRange(new Request(['range' => 'week']));
-                }
-                $spanDays = (int) $customFrom->diffInDays($customTo) + 1;
-                $bucketUnit = $spanDays > 60 ? 'month' : 'day';
-                $bucketCount = $bucketUnit === 'month'
-                    ? max(1, (int) floor($customFrom->diffInMonths($customTo)) + 1)
-                    : $spanDays;
-                $labels = [];
-                if ($bucketUnit === 'day') {
-                    $cursor = $customFrom->copy();
-                    while ($cursor->lte($customTo)) {
-                        $labels[] = $cursor->format('M j');
-                        $cursor->addDay();
-                    }
-                } else {
-                    $cursor = $customFrom->copy()->startOfMonth();
-                    while ($cursor->lte($customTo)) {
-                        $labels[] = $cursor->format('M Y');
-                        $cursor->addMonth();
-                    }
-                }
-                $from = $customFrom;
-                $to = $customTo;
-                break;
-        }
-
-        return [
-            'key' => $range,
-            'from' => $from,
-            'to' => $to,
-            'bucketCount' => $bucketCount,
-            'bucketUnit' => $bucketUnit,
-            'labels' => $labels,
-        ];
+        return app(AnalyticsService::class)->parseRange($request);
     }
 
     /**
@@ -864,17 +757,7 @@ class DashboardController extends Controller
      */
     private function buildChartSeries($base, array $range): array
     {
-        $from = $range['from'];
-        $to = $range['to'];
-        $bucketCount = $range['bucketCount'];
-        $bucketUnit = $range['bucketUnit'];
-        $labels = $range['labels'];
-        return [
-            'totalGuests'      => $this->seriesForRange((clone $base), $from, $to, $bucketCount, $bucketUnit, $labels),
-            'totalCalls'       => $this->seriesForRange((clone $base)->whereNotNull('contacted_status')->where('contacted_status', '!=', ''), $from, $to, $bucketCount, $bucketUnit, $labels),
-            'totalSubmissions' => $this->seriesForRange(new ImpactSubmission, $from, $to, $bucketCount, $bucketUnit, $labels),
-            'totalUsers'       => $this->seriesForRange(new User, $from, $to, $bucketCount, $bucketUnit, $labels),
-        ];
+        return app(AnalyticsService::class)->buildChartSeries($base, $range);
     }
 
     /**
@@ -904,50 +787,12 @@ class DashboardController extends Controller
      */
     private function tzFormat(\Carbon\Carbon $c, string $format): string
     {
-        return $c->copy()->setTimezone(config('app.timezone'))->format($format);
+        return app(AnalyticsService::class)->tzFormat($c, $format);
     }
 
     private function seriesForRange($query, $from, $to, int $bucketCount, string $bucketUnit, array $labels): array
     {
-        // TZ guard delegated to private `tzFormat()` helper below — see that method's
-        // docblock. Catches a future refactor (e.g. storing `created_at` as UTC) at
-        // runtime: without pinning, the stored TZ and app TZ can diverge across a
-        // DST boundary, causing integer day / month / hour offsets to silently drift.
-        $buckets = array_fill(0, $bucketCount, 0);
-        $rows = (clone $query)
-            ->where('created_at', '>=', $from)
-            ->where('created_at', '<=', $to)
-            ->get(['created_at']);
-
-        if ($bucketUnit === 'hour') {
-            $fromHour = (int) $this->tzFormat($from, 'YmdH');
-            foreach ($rows as $r) {
-                $rowHour = (int) $this->tzFormat($r->created_at, 'YmdH');
-                $offset = $rowHour - $fromHour;
-                if ($offset >= 0 && $offset < $bucketCount) {
-                    $buckets[$offset]++;
-                }
-            }
-        } elseif ($bucketUnit === 'day') {
-            $fromDay = (int) $this->tzFormat($from, 'Ymd');
-            foreach ($rows as $r) {
-                $rowDay = (int) $this->tzFormat($r->created_at, 'Ymd');
-                $offset = $rowDay - $fromDay;
-                if ($offset >= 0 && $offset < $bucketCount) {
-                    $buckets[$offset]++;
-                }
-            }
-        } elseif ($bucketUnit === 'month') {
-            $fromYm = (int) ($this->tzFormat($from, 'Y') . $this->tzFormat($from, 'm'));
-            foreach ($rows as $r) {
-                $rowYm = (int) ($this->tzFormat($r->created_at, 'Y') . $this->tzFormat($r->created_at, 'm'));
-                $offset = $rowYm - $fromYm;
-                if ($offset >= 0 && $offset < $bucketCount) {
-                    $buckets[$offset]++;
-                }
-            }
-        }
-        return $buckets;
+        return app(AnalyticsService::class)->seriesForRange($query, $from, $to, $bucketCount, $bucketUnit, $labels);
     }
 
     /**
@@ -958,97 +803,19 @@ class DashboardController extends Controller
      */
     private function systemOverviewStats(): array
     {
-        $dbSizeBytes = 0;
-        try {
-            $driver = DB::connection()->getDriverName();
-            if ($driver === 'mysql') {
-                foreach (DB::select('SHOW TABLE STATUS') as $r) {
-                    $dbSizeBytes += (int) ($r->Data_length ?? 0) + (int) ($r->Index_length ?? 0);
-                }
-            } elseif ($driver === 'sqlite') {
-                $dbPath = config('database.connections.sqlite.database');
-                if ($dbPath && file_exists($dbPath)) {
-                    $dbSizeBytes = (int) (filesize($dbPath) ?: 0);
-                }
-            }
-        } catch (\Throwable $e) {
-            $dbSizeBytes = 0;
-        }
-
-        $storageBytes = 0;
-        foreach (['app', 'framework'] as $sub) {
-            $path = storage_path($sub);
-            if (is_dir($path)) {
-                $storageBytes += $this->dirSize($path);
-            }
-        }
-
-        $activeUsers = 0;
-        try {
-            $activeUsers = (int) Activity::where('updated_at', '>=', now()->subDays(7))
-                ->whereNotNull('causer_id')
-                ->distinct('causer_id')
-                ->count('causer_id');
-        } catch (\Throwable $e) {
-            $activeUsers = 0;
-        }
-
-        $errorEvents = 0;
-        try {
-            $errorEvents = (int) Activity::where('updated_at', '>=', now()->subHours(24))
-                ->where(function ($q) {
-                    $q->where('log_name', 'error')->orWhere('description', 'like', '%fail%');
-                })
-                ->count();
-        } catch (\Throwable $e) {
-            $errorEvents = 0;
-        }
-
-        if ($errorEvents === 0) {
-            $health = ['label' => 'Healthy', 'tone' => 'success'];
-        } elseif ($errorEvents < 5) {
-            $health = ['label' => '1 issue', 'tone' => 'warn'];
-        } else {
-            $health = ['label' => $errorEvents . ' issues', 'tone' => 'danger'];
-        }
-
-        return [
-            'dbSizeMb'     => round($dbSizeBytes / 1024 / 1024, 2),
-            'dbSizeLabel'  => $dbSizeBytes > 0 ? $this->humanBytes($dbSizeBytes) : '—',
-            'storageMb'    => round($storageBytes / 1024 / 1024, 2),
-            'storageLabel' => $storageBytes > 0 ? $this->humanBytes($storageBytes) : '—',
-            'activeUsers'  => $activeUsers,
-            'healthLabel'  => $health['label'],
-            'healthTone'   => $health['tone'],
-        ];
+        return app(AnalyticsService::class)->systemOverviewStats();
     }
 
     /** Recursive directory-size helper using SPL iterators — portable, no Facade dependency. */
     private function dirSize(string $path): int
     {
-        if (! is_dir($path)) {
-            return 0;
-        }
-        $total = 0;
-        $iter = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($path, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::LEAVES_ONLY
-        );
-        foreach ($iter as $file) {
-            if ($file->isFile()) {
-                $total += (int) $file->getSize();
-            }
-        }
-        return $total;
+        return app(AnalyticsService::class)->dirSize($path);
     }
 
     /** Human-readable byte suffix helper (B / KB / MB / GB). */
     private function humanBytes(int $bytes): string
     {
-        if ($bytes < 1024) return $bytes . ' B';
-        if ($bytes < 1024 * 1024) return round($bytes / 1024, 1) . ' KB';
-        if ($bytes < 1024 * 1024 * 1024) return round($bytes / 1024 / 1024, 1) . ' MB';
-        return round($bytes / 1024 / 1024 / 1024, 1) . ' GB';
+        return app(AnalyticsService::class)->humanBytes($bytes);
     }
 
     /**
@@ -1165,6 +932,18 @@ class DashboardController extends Controller
             'soul'       => 'Soul',
             default      => ucfirst($type),
         };
+    }
+
+    /**
+     * Phase 34 — in-app announcements shared across every dashboard variant.
+     *
+     * Delegates to Admin\MessagesController::announcementsPayload() so the
+     * Messages board and every role's dashboard render the same wire shape.
+     * Returns [] defensively (empty feed renders nothing on the page).
+     */
+    private function announcementsPayload(): array
+    {
+        return \App\Http\Controllers\Admin\MessagesController::announcementsPayload();
     }
 
     /**

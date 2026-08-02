@@ -2,6 +2,7 @@ import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
 import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
+import ReadOnlyBanner from '@/Components/ReadOnlyBanner';
 import StatusPill from '@/Components/StatusPill';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
@@ -13,6 +14,7 @@ interface ImpactCellDetail {
     address: string | null;
     is_primary: boolean;
     parent_cell_id: string | null;
+    order: number;
     parent?: { id: string; name: string } | null;
     sub_cells?: { id: string; name: string; is_primary: boolean }[];
     submission_count?: number;
@@ -52,8 +54,10 @@ interface PrimaryCellRef {
  *
  * UX
  * --
- * Read-only display by default. Admin (Administrator OR Impact_Cell_Admin)
- * sees THREE independent "Edit" toggles, one per card:
+ * Read-only display by default. Administrator sees THREE independent
+ * "Edit" toggles, one per card (Phase 35 — Impact_Cell_Admin is
+ * read-only on this surface; the toggles hide via the server-computed
+ * canEdit* props below):
  *
  *   1. **Details**        → toggle reveals an inline form for name, phone,
  *                            address, is_primary, parent_cell_id, order.
@@ -69,12 +73,12 @@ interface PrimaryCellRef {
  *
  * Auth model
  * ----------
- * Admin-only because:
+ * Writes are Administrator-only (Phase 35 — Impact_Cell_Admin read-only),
+ * except assigned Impact_Leaders may edit their OWN cell's leadership team:
  *   - ImpactCellPolicy::create/update/delete gate reads/writes.
- *   - We pass `activeRole` global-share through and compare on the React
- *     side; the server revalidates every action and is the source of truth.
+ *   - The server revalidates every action and is the source of truth.
  */
-export default function ImpactCellsShow({ cell, activeRole, attachablePrims = [] }: { cell: ImpactCellDetail; activeRole: string | null; attachablePrims?: PrimaryCellRef[]; }) {
+export default function ImpactCellsShow({ cell, activeRole, attachablePrims = [], canEditDetails = false, canEditLeadership = false }: { cell: ImpactCellDetail; activeRole: string | null; attachablePrims?: PrimaryCellRef[]; canEditDetails?: boolean; canEditLeadership?: boolean; }) {
     const subCells = cell.sub_cells ?? [];
     const leaderUsers = cell.leader_users ?? [];
 
@@ -87,7 +91,13 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
     const leadershipIcon = <><path d="M12 2l3 6 6 1-4.5 4 1 6L12 16l-5.5 3 1-6L3 9l6-1z" /></>;
     const fileIcon = <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></>;
 
-    const isAdmin = activeRole === 'Administrator' || activeRole === 'Impact_Cell_Admin';
+    // Phase 32 + Phase 35 — server-computed edit gates (ImpactCellPolicy).
+    // `canEditDetails`  = update() (Administrator only) — owns name + hierarchy.
+    // `canEditLeadership` = updateLeadership() (Administrator on any cell,
+    // or assigned Impact_Leaders on their OWN cell). Leaders therefore see
+    // ONLY the leadership editor — never the cell-name details editor.
+    // Phase 35: Impact_Cell_Admin gets neither (read-only surface).
+    const canEditAnything = canEditDetails || canEditLeadership;
 
     // ── THREE independent editor toggles. ─────────────────────────────
     const [isEditingDetails, setIsEditingDetails] = useState(false);
@@ -110,7 +120,7 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
         address: cell.address ?? '',
         parent_cell_id: cell.parent_cell_id ?? '',
         is_primary: cell.is_primary,
-        order: 0,
+        order: cell.order ?? 0,
     });
 
     const subCellsForm = useForm<{ child_id: string }>({
@@ -129,7 +139,10 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
     };
     const submitLeadership = (e: React.FormEvent) => {
         e.preventDefault();
-        leadershipForm.put(`/impact-cells/${cell.id}`, {
+        // Phase 32 — dedicated leadership-only endpoint so the 6 free-text
+        // fields save WITHOUT tripping validateCell()'s required name/
+        // is_primary rules (the old shared PUT silently swallowed saves).
+        leadershipForm.put(`/impact-cells/${cell.id}/leadership`, {
             preserveScroll: true,
             onSuccess: () => setIsEditingLeadership(false),
         });
@@ -210,6 +223,14 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
             <Head title={cell.name} />
 
             <div className="space-y-6">
+                {/* Phase 35 — read-only notice for Impact_Cell_Admin (view-only surface). */}
+                {activeRole === 'Impact_Cell_Admin' && (
+                    <ReadOnlyBanner
+                        testId="impact-cell-detail-readonly-banner"
+                        description="Impact_Cell_Admin can view this cell but cannot edit its details, leadership team, or sub-cells. Only an Administrator can make changes."
+                    />
+                )}
+
                 {/* Hero band */}
                 <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-blue-50 p-6 shadow-card dark:border-indigo-900/40 dark:from-indigo-950/40 dark:via-gray-900 dark:to-blue-950/40">
                     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -227,32 +248,36 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
                             </div>
                         </div>
 
-                        {/* Phase 17 — three independent admin toggles, ALL hidden when no editor is engaged. */}
-                        {isAdmin && ! isEditingDetails && ! isEditingLeadership && ! isManagingSubCells && (
+                        {/* Phase 17 + Phase 32 — edit toggles, ALL hidden when no editor is engaged. */}
+                        {canEditAnything && ! isEditingDetails && ! isEditingLeadership && ! isManagingSubCells && (
                             <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={startEditingDetails}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-300"
-                                    data-testid="impact-cell-edit-details-button"
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
-                                        {fileIcon}
-                                    </svg>
-                                    Edit details
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={startEditingLeadership}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-300"
-                                    data-testid="impact-cell-edit-button"
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
-                                        {editIcon}
-                                    </svg>
-                                    Edit leadership team
-                                </button>
-                                {cell.is_primary && (
+                                {canEditDetails && (
+                                    <button
+                                        type="button"
+                                        onClick={startEditingDetails}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-300"
+                                        data-testid="impact-cell-edit-details-button"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                                            {fileIcon}
+                                        </svg>
+                                        Edit details
+                                    </button>
+                                )}
+                                {canEditLeadership && (
+                                    <button
+                                        type="button"
+                                        onClick={startEditingLeadership}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-300"
+                                        data-testid="impact-cell-edit-button"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                                            {editIcon}
+                                        </svg>
+                                        Edit leadership team
+                                    </button>
+                                )}
+                                {canEditDetails && cell.is_primary && (
                                     <button
                                         type="button"
                                         onClick={startManagingSubCells}
@@ -271,7 +296,7 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
                 </section>
 
                 {/* Phase 17 — Details editor (independent useForm, separate toggle). */}
-                {isAdmin && isEditingDetails && (
+                {canEditDetails && isEditingDetails && (
                     <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-indigo-200 bg-white shadow-card dark:border-indigo-700/40 dark:bg-gray-800" data-testid="impact-cell-edit-details-form-card">
                         <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
                             <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
@@ -366,7 +391,7 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
                 )}
 
                 {/* Phase 13 — Leadership Team editor (existing — independent toggle, distinct form). */}
-                {isAdmin && isEditingLeadership && (
+                {canEditLeadership && isEditingLeadership && (
                     <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-indigo-200 bg-white shadow-card dark:border-indigo-700/40 dark:bg-gray-800" data-testid="impact-cell-edit-form-card">
                         <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
                             <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
@@ -491,7 +516,7 @@ export default function ImpactCellsShow({ cell, activeRole, attachablePrims = []
                         </header>
 
                         {/* MANAGER MODE — admin-only toggle engaged. */}
-                        {isAdmin && isManagingSubCells ? (
+                        {canEditDetails && isManagingSubCells ? (
                             <div className="space-y-5 px-5 py-5" data-testid="impact-cell-manage-subcells-card">
                                 <div>
                                     <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300">Currently attached ({subCells.length})</h4>
@@ -672,7 +697,9 @@ function cellToDetailsPayload(cell: ImpactCellDetail): ImpactCellDetailsPayload 
         address: cell.address ?? '',
         parent_cell_id: cell.parent_cell_id ?? '',
         is_primary: cell.is_primary,
-        order: 0,
+        // Phase 32 — carry the real order through instead of hardcoding 0,
+        // so a details save no longer silently resets the cell's ordering.
+        order: cell.order ?? 0,
     };
 }
 

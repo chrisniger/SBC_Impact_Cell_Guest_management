@@ -32,15 +32,32 @@ export default function RoleSwitcher({ roles, activeRole }: RoleSwitcherProps) {
         <div className="relative ms-3" data-testid="role-switcher">
             <details className="relative">
                 <summary
-                    className="inline-flex cursor-pointer items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
+                    className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-xs font-semibold text-indigo-700 transition duration-150 ease-in-out hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-indigo-700/50 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
                     aria-label="Switch active role"
+                    title="Switch your active role (changes the dashboard view)"
+                    data-testid="role-switcher-trigger"
                 >
-                    Switch role
                     <svg
-                        className="ms-2 h-4 w-4"
+                        className="h-3.5 w-3.5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                    >
+                        <rect x="2" y="2" width="20" height="20" rx="5" />
+                        <path d="M7 9l5 5 5-5" />
+                    </svg>
+                    <span data-testid="role-switcher-active">{activeRole}</span>
+                    <svg
+                        className="h-3.5 w-3.5 opacity-60"
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 20 20"
                         fill="currentColor"
+                        aria-hidden="true"
                     >
                         <path
                             fillRule="evenodd"

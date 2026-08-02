@@ -60,7 +60,9 @@ class Phase17ImpactCellEditTest extends TestCase
             $this->validDetailsPayload($cell, phone: '+1-555-ACO-JEDO', address: '123 Test Street')
         );
 
-        $response->assertRedirect(route('impact-cells.index'));
+        // Phase 32 — update() now redirects back to the SHOW page so a
+        // successful details save is immediately visible on the edited cell.
+        $response->assertRedirect(route('impact-cells.show', $cell));
         $fresh = $cell->fresh();
         $this->assertSame('+1-555-ACO-JEDO', $fresh->phone);
         $this->assertSame('123 Test Street', $fresh->address);
@@ -80,7 +82,7 @@ class Phase17ImpactCellEditTest extends TestCase
             $this->validDetailsPayload($cell, leaderName: 'John Doe', leaderPhone: '0803-111-2222')
         );
 
-        $response->assertRedirect(route('impact-cells.index'));
+        $response->assertRedirect(route('impact-cells.show', $cell));
         $fresh = $cell->fresh();
         $this->assertSame('John Doe', $fresh->leader_name);
         $this->assertSame('0803-111-2222', $fresh->leader_phone);
@@ -89,8 +91,8 @@ class Phase17ImpactCellEditTest extends TestCase
         $this->assertNull($fresh->welfare_officer_name);
     }
 
-    // ─── Sub-assertion 3 — Impact_Cell_Admin (cross-cell supervisor) gate ──
-    public function test_impact_cell_admin_can_update_aco_jedo_via_put(): void
+    // ─── Sub-assertion 3 — Impact_Cell_Admin is READ-ONLY (Phase 35) ─────
+    public function test_impact_cell_admin_cannot_update_aco_jedo_via_put(): void
     {
         $admin = $this->makeUserWithRole('Impact_Cell_Admin');
         $cell  = $this->cell('ACO/JEDO');
@@ -100,8 +102,8 @@ class Phase17ImpactCellEditTest extends TestCase
             $this->validDetailsPayload($cell, phone: '+1-555-ICA')
         );
 
-        $response->assertRedirect(route('impact-cells.index'));
-        $this->assertSame('+1-555-ICA', $cell->fresh()->phone);
+        $response->assertForbidden();
+        $this->assertNull($cell->fresh()->phone);
     }
 
     // ─── Sub-assertion 4 — non-admin gets 403 ───────────────────────────

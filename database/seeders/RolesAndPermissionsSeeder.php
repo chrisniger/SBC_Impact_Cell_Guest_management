@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Support\RoleHelper;
 use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -33,6 +34,18 @@ class RolesAndPermissionsSeeder extends Seeder
                 ['name' => $name, 'guard_name' => 'web'],
             );
         }
+
+        // Phase 34 — permission catalog for the Roles & Permissions admin
+        // page. One Spatie Permission row per canonical name (idempotent),
+        // then grant the FULL catalog to Administrator so the default
+        // install ships with a working permission baseline.
+        foreach (RoleHelper::PERMISSIONS as $permission) {
+            Permission::firstOrCreate(
+                ['name' => $permission, 'guard_name' => 'web'],
+            );
+        }
+        $admin = Role::firstOrCreate(['name' => 'Administrator', 'guard_name' => 'web']);
+        $admin->syncPermissions(RoleHelper::PERMISSIONS);
 
         // Clear again after seeding so any cached "role doesn't exist"
         // state from a prior run is purged.

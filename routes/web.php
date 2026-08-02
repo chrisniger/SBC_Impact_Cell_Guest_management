@@ -46,6 +46,11 @@ Route::middleware('auth')->group(function () {
     Route::get   ('/impact-cells/{id}',             [ImpactCellController::class, 'show'])->name('impact-cells.show');
     Route::post  ('/impact-cells',                  [ImpactCellController::class, 'store'])->name('impact-cells.store');
     Route::put   ('/impact-cells/{id}',             [ImpactCellController::class, 'update'])->name('impact-cells.update');
+    // Phase 32 — leadership-team-only PUT. Split from the fat `update()`
+    // so an assigned Impact_Leaders can edit their own team (validated +
+    // authorized via ImpactCellPolicy::updateLeadership) without ever
+    // touching the cell name/hierarchy, which stay behind `update`.
+    Route::put   ('/impact-cells/{id}/leadership',  [ImpactCellController::class, 'updateLeadership'])->name('impact-cells.update-leadership');
     Route::delete('/impact-cells/{id}',             [ImpactCellController::class, 'destroy'])->name('impact-cells.destroy');
     // Phase 17 — admin-only re-parenting endpoints used by the Sub-cells
     // editor card on Show.tsx. Both authorize ImpactCellPolicy::update
@@ -89,9 +94,25 @@ Route::middleware('auth')->group(function () {
     // honest placeholders and are gated behind local/staging by the
     // `gate.stubs` middleware (see GateStubPagesByEnvironment).
     Route::get('/admin/submissions',              fn () => Inertia::render('Admin/Submissions/Index'))->name('admin.submissions.index');
-    Route::get('/admin/roles-permissions',        fn () => Inertia::render('Admin/RolesPermissions/Index'))->name('admin.roles-permissions.index')->middleware('gate.stubs');
-    Route::get('/admin/messages',                 fn () => Inertia::render('Admin/Messages/Index'))->name('admin.messages.index')->middleware('gate.stubs');
-    Route::get('/admin/analytics',                fn () => Inertia::render('Admin/Analytics/Index'))->name('admin.analytics.index')->middleware('gate.stubs');
+    // Phase 34 — real Roles & Permissions admin UI (replaces the Phase 06d.0
+    // "Coming soon" stub). Listing stays behind gate.stubs (production-hidden
+    // per design decision); write endpoints stay available for provisioning.
+    Route::get   ('/admin/roles-permissions',              [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'index'])->name('admin.roles-permissions.index')->middleware('gate.stubs');
+    Route::post  ('/admin/roles-permissions',              [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'store'])->name('admin.roles-permissions.store');
+    Route::put   ('/admin/roles-permissions/{role}',       [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'update'])->name('admin.roles-permissions.update');
+    Route::delete('/admin/roles-permissions/{role}',       [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'destroy'])->name('admin.roles-permissions.destroy');
+    Route::post  ('/admin/roles-permissions/permissions',  [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'storePermission'])->name('admin.roles-permissions.permissions.store');
+    // Phase 34 — real in-app announcement board (replaces the Phase 06d.0
+    // "Coming soon" stub). Listing stays behind gate.stubs (production-hidden
+    // per design decision); writes stay available for provisioning.
+    Route::get   ('/admin/messages',                  [\App\Http\Controllers\Admin\MessagesController::class, 'index'])->name('admin.messages.index')->middleware('gate.stubs');
+    Route::post  ('/admin/messages',                  [\App\Http\Controllers\Admin\MessagesController::class, 'store'])->name('admin.messages.store');
+    Route::delete('/admin/messages/{announcement}',   [\App\Http\Controllers\Admin\MessagesController::class, 'destroy'])->name('admin.messages.destroy');
+    // Phase 34 — real Analytics page (replaces the Phase 06d.0 "Coming soon"
+    // stub). Reuses the shared AnalyticsService chart math + the existing
+    // OverviewAnalytics / DateRangeFilter / KPICard / SystemOverviewPanel
+    // components. Listing stays behind gate.stubs (production-hidden).
+    Route::get('/admin/analytics',                [\App\Http\Controllers\Admin\AnalyticsController::class, 'index'])->name('admin.analytics.index')->middleware('gate.stubs');
 
     // Phase 06e+1 — Admin/Users real CRUD (was a Phase 06d.0 stub).
     // Administrator-only via UserPolicy (auto-discovered). The inline
@@ -126,6 +147,15 @@ Route::middleware('auth')->group(function () {
 
     // Phase 09b — admin test-email endpoint (Send test email button on Settings.tsx).
     Route::post('/notification-settings/test-email', [\App\Http\Controllers\NotificationSettingsController::class, 'testEmail'])->name('notification-settings.test-email');
+
+    // Phase 33 — Admin Settings page: SMTP configuration (writes .env)
+    // + Backup & Restore (JSON archive download per scope / full restore).
+    // Administrator-only; every endpoint re-checks activeRole in the controller.
+    Route::get   ('/admin/settings',                [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('admin.settings.index');
+    Route::post  ('/admin/settings/smtp',           [\App\Http\Controllers\Admin\SettingsController::class, 'storeSmtp'])->name('admin.settings.smtp.store');
+    Route::post  ('/admin/settings/smtp/test',      [\App\Http\Controllers\Admin\SettingsController::class, 'testEmail'])->name('admin.settings.smtp.test');
+    Route::get   ('/admin/settings/backup',         [\App\Http\Controllers\Admin\SettingsController::class, 'backup'])->name('admin.settings.backup');
+    Route::post  ('/admin/settings/restore',        [\App\Http\Controllers\Admin\SettingsController::class, 'restore'])->name('admin.settings.restore');
 
     // Phase 10 — CSV Import / Export (Admin for import, Admin+Officers for export).
     Route::get   ('/csv/import',                          [\App\Http\Controllers\CsvImportController::class, 'index'])->name('csv.import');

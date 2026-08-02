@@ -17,14 +17,17 @@ use Tests\TestCase;
  *
  * Locks the user-visible contract delivered in Phase 09:
  *
- *   1. Impact_Cell_Admin can reach /dashboard and sees the dedicated
- *      "Cross-cell & cross-zonal overview" header (NOT the leader variant
- *      which has a single-cell scope).
+ *   1. Impact_Cell_Admin can reach /dashboard and is served the dedicated
+ *      supervisor surface (asserted via the Inertia `variant` prop =
+ *      'impactCellAdmin', NOT the leader variant which has a single-cell
+ *      scope). The "Cross-cell & cross-zonal overview" h2 itself is
+ *      client-rendered JSX, so the assertion keys off the variant prop
+ *      instead of assertSee on server HTML (see the test body).
  *
- *   2. ImpactCellPolicy::create() is OPEN to Impact_Cell_Admin
- *      (per Phase 09 spec: "this role server as the adminitrator for
- *      impact cell, and zonal cordinators" — managing the hierarchy is
- *      in scope).
+ *   2. ImpactCellPolicy::create() is CLOSED to Impact_Cell_Admin
+ *      (Phase 35 — Impact_Cell_Admin is read-only on the Impact Cells
+ *      surface: view yes, add/edit no. Hierarchy writes are
+ *      Administrator-only, matching delete()'s blast-radius gate).
  *
  *   3. ImpactCellPolicy::delete() stays admin-only.
  *      Cell deletion teardown touches global system state (sub-cell
@@ -53,15 +56,26 @@ class ImpactCellAdminAccessTest extends TestCase
         $response = $this->actingAs($admin)->get('/dashboard');
 
         $response->assertOk();
-        // assertSee (default $escaped=true) HTML-encodes `&` → `&amp;` before
-        // comparing, which matches the rendered `&amp;` in the h2 header.
-        $response->assertSee('Cross-cell & cross-zonal overview');
-        // Sanity check: the Impact_Cell_Admin does NOT see the Leader variant's
-        // "Cell Snapshot" section (would mean leaderDashboard() leaked through).
-        $response->assertDontSee('Cell Snapshot');
+        // Phase 35 follow-up — assert the Inertia props instead of assertSee
+        // on client-rendered JSX. The "Cross-cell & cross-zonal overview" h2
+        // (ICA surface) and the leader variant's "Cell Snapshot" section are
+        // rendered by React AFTER hydration, so they never appear in the
+        // server HTML and assertSee could never match them. The `variant`
+        // prop is the single source of truth for which surface rendered:
+        //   - variant='impactCellAdmin' → the ICA supervisor surface (proves
+        //     the "Cross-cell" header is what renders AND that the leader
+        //     variant's "Cell Snapshot" did NOT leak through).
+        //   - activeGroup='impactCell'  → the impactCell-group surface.
+        //   - activeRole='Impact_Cell_Admin' → the correct actor dispatched.
+        $response->assertInertia(fn ($page) => $page
+            ->component('Dashboard')
+            ->where('variant', 'impactCellAdmin')
+            ->where('activeGroup', 'impactCell')
+            ->where('activeRole', 'Impact_Cell_Admin')
+        );
     }
 
-    public function test_impact_cell_admin_can_create_impact_cell(): void
+    public function test_impact_cell_admin_cannot_create_impact_cell(): void
     {
         $this->seedRoles();
         $admin = $this->makeUserWithRole(RoleHelper::ROLE_IMPACT_CELL_ADMIN);
@@ -72,9 +86,9 @@ class ImpactCellAdminAccessTest extends TestCase
             'order'      => 0,
         ]);
 
-        // ImpactCellController::store() returns RedirectResponse (302).
-        $response->assertRedirect(route('impact-cells.index'));
-        $this->assertDatabaseHas('impact_cells', [
+        // Phase 35 — Impact_Cell_Admin is read-only: create() now 403s.
+        $response->assertForbidden();
+        $this->assertDatabaseMissing('impact_cells', [
             'name'       => 'New Test Cell',
             'is_primary' => true,
         ]);

@@ -3,6 +3,7 @@
 namespace Tests\Concerns;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -82,6 +83,32 @@ use Spatie\Permission\PermissionRegistrar;
 trait RefreshDatabaseWithSeed
 {
     use RefreshDatabase;
+
+    /**
+     * Phase 27 step (b) — test-DB isolation rebind, fired BEFORE
+     * `refreshTestDatabase()` runs `migrate:fresh`.
+     *
+     * Why this is required (empirically diagnosed 2026-08-01):
+     *   - phpunit.xml declares `<env name="DB_DATABASE" value="impact_test"
+     *     force="true"/>`, but PHPUnit's `<env>` handler only writes
+     *     `putenv()` + `$_ENV` — it does NOT touch `$_SERVER`.
+     *   - Laravel's `env()` helper reads `$_SERVER` FIRST (AdapterRepository),
+     *     and `.env` loads `DB_DATABASE=impact_guest` into `$_SERVER`.
+     *     Result: `env('DB_DATABASE')` ALWAYS returned `impact_guest`,
+     *     so every `migrate:fresh` wiped the LIVE dev database.
+     *   - Rebinding the resolved config here (before the connection is
+     *     opened for migrate:fresh) forces the dedicated test DB.
+     *
+     * The value is read from `getenv('DB_DATABASE')` — the ONLY layer
+     * PHPUnit's force actually writes reliably — with `impact_test` as
+     * the fallback so this stays correct even if phpunit.xml changes.
+     */
+    protected function beforeRefreshingDatabase()
+    {
+        $testDatabase = getenv('DB_DATABASE') ?: 'impact_test';
+        config(['database.connections.mysql.database' => $testDatabase]);
+        DB::purge('mysql');
+    }
 
     /**
      * Laravel native lifecycle hook. Fires inside `refreshDatabase()`

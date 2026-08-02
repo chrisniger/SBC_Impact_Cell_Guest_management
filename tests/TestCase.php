@@ -49,46 +49,55 @@ use Tests\Concerns\RefreshDatabaseWithSeed;
  * the setUp() override pattern exclusively.
  *
  * ──────────────────────────────────────────────────────────────────────────────
- * Phase 27 — Test-time DB isolation reverted (DBA-blocked)
+ * Phase 27 — Test-time DB isolation (RESOLVED)
  * ──────────────────────────────────────────────────────────────────────────────
  *
  * Phase 26 (`phpunit.xml`) hardens the env var guarantees via
  * `force="true"` on every `<env>` tag and points tests at a separate
  * `impact_test` MySQL database. Configuration-layer-only isolation.
  *
- * Phase 27 was a defensive rebind in `setUp()` after `parent::setUp()`
- * (rebind config + DB::purge('mysql')), intended as a belt-and-braces
- * against the .env-bleed we observed empirically. The attempt hit TWO
- * unresolved blockers that surfaced during verification:
+ * Phase 27 originally attempted a defensive rebind in `setUp()` after
+ * `parent::setUp()` and hit TWO blockers — BOTH are now resolved:
  *
- *   (1) TIMING: `parent::setUp()` fires RefreshDatabase → migrate:fresh
- *       BEFORE the rebind executes, so the migrate:fresh still targets
- *       `impact_guest` (the env-loaded DB). The reviewer's correct
- *       recommendation is to move the rebind to the
- *       `beforeRefreshingDatabase()` hook in `RefreshDatabaseWithSeed.php`
- *       so the rebind takes effect BEFORE `migrate:fresh` runs. Pending
- *       experimental confirmation + the Privileges blocker below.
+ *   (1) PRIVILEGES (blocked → fixed via root): `ipcDBurs22` (the .env-
+ *       configured DB user) only had access to `impact_guest`.
+ *       `CREATE DATABASE impact_test` failed with `Access denied` (1044).
+ *       Fixed by creating `impact_test` and granting
+ *       `GRANT ALL PRIVILEGES ON impact_test.* TO 'ipcDBurs22'@'localhost'`
+ *       via root MySQL access.
  *
- *   (2) PRIVILEGES: `ipcDBurs22` (the .env-configured DB user) only has
- *       access to `impact_guest`, `information_schema`, `performance_schema`.
- *       `CREATE DATABASE impact_test` fails with `Access denied for user
- *       'ipcDBurs22'@'localhost' to database 'impact_test'` (1044), and
- *       GRANT-self attempts fail the same way. Without a DBA granting
- *       impact_test.* to ipcDBurs22, even a perfect TIMING-side fix
- *       cannot put isolation into effect.
+ *   (2) TIMING (blocked → fixed via the right hook): `parent::setUp()`
+ *       fires RefreshDatabase → migrate:fresh BEFORE a setUp()-rebind
+ *       could execute. The rebind now lives in
+ *       `RefreshDatabaseWithSeed::beforeRefreshingDatabase()` — Laravel's
+ *       documented hook that fires BEFORE `migrate:fresh` — so the
+ *       rebind takes effect in time.
  *
- * Decision for now: REVERT the code-level rebind in setUp() to keep tests
- * green against the current .env DB. Recurring consequence: `php artisan
- * test` will wipe `impact_guest` between runs (the original Phase 25
- * incident). Recovery is owned by `scripts/restart_dev_server.sh`, which
- * is the durable guard today.
+ * Root cause of why the config rebind was needed at all: PHPUnit's
+ * `<env force="true">` only writes `putenv()` + `$_ENV`, NOT `$_SERVER`.
+ * Laravel's `env()` reads `$_SERVER` FIRST, and `.env` loads
+ * `DB_DATABASE=impact_guest` into `$_SERVER`, so `env('DB_DATABASE')`
+ * always won and every `php artisan test` wiped the live dev DB.
  *
- * To re-enable, the path is:
- *   (a) DBA grants `GRANT ALL PRIVILEGES ON impact_test.* TO 'ipcDBurs22'@'localhost'`.
- *   (b) Move the rebind from this setUp() into
- *       RefreshDatabaseWithSeed::beforeRefreshingDatabase() (pre-migrate:fresh).
- *   (c) Verify with 3 consecutive reruns. Until then, /register can flip to
- *       503 mid-test-session; bash scripts/restart_dev_server.sh recovers.
+ * Guard: `tests/Feature/DbIsolationGuardTest.php` asserts the suite runs
+ * against `impact_test` AND that `impact_guest` still holds its rows.
+ * Recovery if anything regresses: `bash scripts/restart_dev_server.sh`.
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ * Phase 31 — post-test reseed safety net (belt-and-braces)
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ * Even with impact_test isolation, the PHPUnit extension
+ * `Tests\Support\ReseedAfterTestRun` (registered in phpunit.xml) fires
+ * `php artisan seed:canonical` on `TestRunner\Finished` after ANY test
+ * run, so seeded credentials (sbcadmin@impact.test / //Chris##101,
+ * officer1@impact.test, etc.) are re-verified against the live dev DB
+ * as a final safety net. It spawns a child `php artisan` process with
+ * the `.env` dev DB values re-asserted (the parent process has
+ * `DB_DATABASE=impact_test` forced via putenv, which a child would
+ * otherwise inherit). Skips in CI; failures warn on STDERR without
+ * failing the suite. `composer test-local` also calls seed:canonical
+ * explicitly as a second belt-and-braces layer.
  */
 abstract class TestCase extends BaseTestCase
 {

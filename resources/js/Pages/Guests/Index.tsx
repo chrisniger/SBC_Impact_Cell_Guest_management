@@ -33,6 +33,7 @@ interface GuestsPageProps {
         };
     };
     canCreate: boolean;
+    editableFields: string[];
     activeRole: string | null;
     groups: {
         ownedByGroup: string[];
@@ -52,7 +53,9 @@ function StatusBadge({ value }: { value: string | null }) {
     return <StatusPill tone={tone}>{value}</StatusPill>;
 }
 
-export default function Index({ guests, canCreate, activeRole, groups }: GuestsPageProps) {
+export default function Index({ guests, canCreate, editableFields, activeRole, groups }: GuestsPageProps) {
+    const canEditAny = (editableFields ?? []).length > 0;
+
     return (
         <AdminDashboardLayout
             header={
@@ -90,6 +93,9 @@ export default function Index({ guests, canCreate, activeRole, groups }: GuestsP
                                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Impact</th>
                                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Follow Up</th>
                                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Created</th>
+                                        {canEditAny && (
+                                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -108,6 +114,21 @@ export default function Index({ guests, canCreate, activeRole, groups }: GuestsP
                                             <td className="px-4 py-3"><StatusBadge value={g.impact_status} /></td>
                                             <td className="px-4 py-3"><StatusBadge value={g.follow_up_status} /></td>
                                             <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.created_at?.slice(0, 10) ?? '—'}</td>
+                                            {canEditAny && (
+                                                <td className="px-4 py-3 text-right">
+                                                    <Link
+                                                        href={route('guests.edit', g.id)}
+                                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-300"
+                                                        data-testid={`guest-edit-${g.id}`}
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                        </svg>
+                                                        Edit
+                                                    </Link>
+                                                </td>
+                                            )}
                                         </tr>
                                     ))}
                                 </tbody>

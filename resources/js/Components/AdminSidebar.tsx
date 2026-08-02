@@ -90,7 +90,10 @@ const SECTIONS: Section[] = [
             { label: 'Users',               href: route('admin.users.index'),          routeName: 'admin.users.index',          iconPath: ICON_USERS_ADMIN },
             { label: 'Roles & Permissions', href: route('admin.roles-permissions.index'), routeName: 'admin.roles-permissions.index', iconPath: ICON_ROLES },
             { label: 'Audit Log',           href: route('audit.index'),                routeName: 'audit.index',                iconPath: ICON_AUDIT },
-            { label: 'Settings',            href: route('profile.edit'),               routeName: 'profile.edit',               iconPath: ICON_SETTINGS },
+            // Phase 33 — Settings now opens the admin SMTP + Backup/Restore page;
+            // the user's own Profile stays reachable as its own item.
+            { label: 'Settings',            href: route('admin.settings.index'),      routeName: 'admin.settings.index',      iconPath: ICON_SETTINGS },
+            { label: 'Profile',             href: route('profile.edit'),               routeName: 'profile.edit',               iconPath: ICON_USERS_ADMIN },
         ],
     },
     {

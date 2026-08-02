@@ -7,7 +7,10 @@ import StatusPill from '@/Components/StatusPill';
 import { Head, Link, useForm } from '@inertiajs/react';
 
 /**
- * Phase 17 — /impact-cells/create Inertia page (Administrator + Impact_Cell_Admin only).
+ * Phase 17 + Phase 35 — /impact-cells/create Inertia page (Administrator only).
+ * Phase 35 made Impact_Cell_Admin read-only on the Impact Cells surface,
+ * so the "Add new cell" entry point (and this page) is Administrator-only.
+ * The route itself is gated server-side by ImpactCellPolicy::create.
  *
  * Standard admin form for adding a new impact cell. The user picks at
  * creation time whether this cell is a primary standalone cell OR a

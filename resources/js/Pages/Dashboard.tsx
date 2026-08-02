@@ -109,6 +109,15 @@ type ImpactCellAdminSubmission = {
 
 type ZonalCell = { id: string; name: string; is_primary: boolean };
 
+/** Phase 34 — in-app announcement row (shared across every dashboard variant). */
+type AnnouncementRow = {
+    id: number;
+    title: string;
+    body: string;
+    authorName: string;
+    createdAt: string | null;
+};
+
 // Phase 06d.0 — per-KPI delta + sparkline type contracts.
 type KpiDelta = { value: number; positiveIsGood?: boolean };
 type KpiDeltas = Record<string, KpiDelta>;
@@ -153,6 +162,8 @@ type DashboardPageProps = {
     recentCrossCellSubs?: ImpactCellAdminSubmission[];
     /** Phase 09 — Impact_Cell_Admin variant only. Zonal-coordinator submissions feed. */
     recentZonalSubs?: ImpactCellAdminSubmission[];
+    /** Phase 34 — in-app announcements (Messages board). Rendered above every variant. */
+    announcements?: AnnouncementRow[];
 };
 
 /** Phase 06d.0 — minimal auth user shape that the dashboard reads from usePage().props.auth.user.
@@ -233,6 +244,7 @@ export default function Dashboard({
     leadershipRollup,
     recentCrossCellSubs,
     recentZonalSubs,
+    announcements,
 }: DashboardPageProps) {
     // Phase 06e — single shell for every role variant.
     // AdminDashboardLayout is the unified layout; the role-aware
@@ -272,6 +284,8 @@ export default function Dashboard({
         >
             <Head title="Dashboard" />
             <ViewOnlyBanner role={activeRole} />
+            {/* Phase 34 — in-app announcements visible to every role. */}
+            {announcements && announcements.length > 0 && <AnnouncementsBoard announcements={announcements} />}
             {variant === 'admin' ? (
                 <AdminDashboard
                     kpis={kpis as AdminKpis}
@@ -326,6 +340,50 @@ function PageCard({ children, className = '' }: { children: React.ReactNode; cla
         <div className={`motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800 ${className}`}>
             {children}
         </div>
+    );
+}
+
+/* ───────────  Phase 34 — Announcements board (all roles)  ─────────── */
+
+const announcementIconPath = (
+    <><path d="M3 11l18-6v14L3 13v-2z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></>
+);
+
+function AnnouncementsBoard({ announcements }: { announcements: AnnouncementRow[] }) {
+    return (
+        <DashboardSection
+            sectionTestId="announcements-board"
+            eyebrow="Announcements"
+            title="From the leadership team"
+            description="Latest messages from the administrator — visible to everyone."
+            icon={announcementIconPath}
+            count={announcements.length}
+        >
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {announcements.slice(0, 4).map((a) => (
+                    <DashboardCard
+                        key={a.id}
+                        dataCard={`announcement-${a.id}`}
+                        className="px-5 py-4"
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white" data-testid={`announcement-title-${a.id}`}>
+                                {a.title}
+                            </h4>
+                            <span className="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
+                                {a.createdAt?.slice(0, 10) ?? ''}
+                            </span>
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-gray-600 dark:text-gray-400" data-testid={`announcement-body-${a.id}`}>
+                            {a.body}
+                        </p>
+                        <p className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+                            {a.authorName}
+                        </p>
+                    </DashboardCard>
+                ))}
+            </div>
+        </DashboardSection>
     );
 }
 

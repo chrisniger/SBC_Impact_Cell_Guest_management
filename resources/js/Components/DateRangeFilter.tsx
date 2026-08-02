@@ -11,6 +11,12 @@ type Props = {
     customFrom?: string | null;
     /** ISO date string for custom-to (when rangeKey === 'custom'). */
     customTo?: string | null;
+    /**
+     * Phase 34 — target route for the range change. Defaults to '/dashboard';
+     * the Admin Analytics page passes '/admin/analytics' so the filter stays
+     * on the Analytics page instead of bouncing back to the dashboard.
+     */
+    target?: string;
 };
 
 const PRESETS: Array<{ key: DateRangeKey; label: string; testid: string }> = [
@@ -40,16 +46,16 @@ const PRESETS: Array<{ key: DateRangeKey; label: string; testid: string }> = [
  *   - date-range-custom-from / -to — date inputs
  *   - date-range-custom-apply       — apply button
  */
-function pushRange(range: DateRangeKey, from?: string | null, to?: string | null) {
+function pushRange(target: string, range: DateRangeKey, from?: string | null, to?: string | null) {
     const params: Record<string, string> = { range };
     if (range === 'custom' && from && to && from <= to) {
         params.from = from;
         params.to = to;
     }
-    router.get('/dashboard', params, { preserveState: true, preserveScroll: true });
+    router.get(target, params, { preserveState: true, preserveScroll: true });
 }
 
-export default function DateRangeFilter({ rangeKey, customFrom, customTo }: Props) {
+export default function DateRangeFilter({ rangeKey, customFrom, customTo, target = '/dashboard' }: Props) {
     const [from, setFrom] = useState<string>(customFrom ?? '');
     const [to, setTo]     = useState<string>(customTo ?? '');
     const isCustom = rangeKey === 'custom';
@@ -65,7 +71,7 @@ export default function DateRangeFilter({ rangeKey, customFrom, customTo }: Prop
                     <button
                         key={preset.key}
                         type="button"
-                        onClick={() => pushRange(preset.key)}
+                        onClick={() => pushRange(target, preset.key)}
                         data-testid={preset.testid}
                         className={
                             'rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ' +
@@ -142,7 +148,7 @@ export default function DateRangeFilter({ rangeKey, customFrom, customTo }: Prop
                                         <button
                                             type="button"
                                             disabled={!from || !to || from > to}
-                                            onClick={() => pushRange('custom', from, to)}
+                                            onClick={() => pushRange(target, 'custom', from, to)}
                                             data-testid="date-range-custom-apply"
                                             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-600"
                                         >

@@ -167,6 +167,11 @@ class ImpactCell extends Model
         return $query->where('is_primary', true);
     }
 
+    public function scopeSub($query)
+    {
+        return $query->where('is_primary', false);
+    }
+
     public function scopeOrdered($query)
     {
         return $query->orderBy('order')->orderBy('name');

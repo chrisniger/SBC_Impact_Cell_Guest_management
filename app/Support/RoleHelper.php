@@ -95,6 +95,34 @@ final class RoleHelper
         'Impact_Zonal_Coordinator',
     ];
 
+    /**
+     * Phase 34 — permission catalog for the Roles & Permissions admin UI.
+     *
+     * Single source of truth for the permission NAMES the admin can attach
+     * to roles. The app's runtime gating is role-based (RoleHelper group
+     * matrix + User::activeRole()), so these permissions are infrastructure
+     * for the management UI and future feature gates — the seeder creates
+     * one Spatie Permission row per name and grants the full catalog to
+     * the Administrator role by default.
+     *
+     * Keep these snake_case dotted names stable once shipped; renaming a
+     * permission orphans its role_has_permissions rows until re-synced.
+     */
+    public const PERMISSIONS = [
+        'users.manage',
+        'roles.manage',
+        'guests.manage',
+        'cells.manage',
+        'submissions.manage',
+        'reports.view',
+        'analytics.view',
+        'messages.manage',
+        'audit.view',
+        'settings.manage',
+        'backups.manage',
+        'notifications.manage',
+    ];
+
     public static function signupVisibleRoles(): array
     {
         return self::SIGNUP_VISIBLE_ROLES;

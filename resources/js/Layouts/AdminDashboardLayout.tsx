@@ -4,6 +4,7 @@ import AdminSidebar from '@/Components/AdminSidebar';
 import ApplicationLogo from '@/Components/ApplicationLogo';
 import GlobalSearch, { SearchResult } from '@/Components/GlobalSearch';
 import RoleBadge from '@/Components/RoleBadge';
+import RoleSwitcher from '@/Components/RoleSwitcher';
 import ThemeToggle from '@/Components/ThemeToggle';
 
 type AdminAuthProps = Record<string, any> & {
@@ -501,7 +502,16 @@ export default function AdminDashboardLayout({
                         {/* Phase 06e — Light/Dark theme toggle. */}
                         <ThemeToggle />
 
-                        <RoleBadge role={user.activeRole} />
+                        {/* Phase 02b — role switcher for multi-role users.
+                            The switcher trigger already shows the active role,
+                            so for multi-role users it REPLACES the role badge
+                            (avoids two adjacent chips showing the same text).
+                            Single-role users keep the plain badge. */}
+                        {user.hasMultipleRoles ? (
+                            <RoleSwitcher roles={user.roles} activeRole={user.activeRole} />
+                        ) : (
+                            <RoleBadge role={user.activeRole} />
+                        )}
 
                         <Link
                             href={route('logout')}

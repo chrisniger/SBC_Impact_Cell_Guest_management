@@ -31,13 +31,17 @@ class NotificationSettingsController extends Controller
     /**
      * Phase 09b — true if mail driver is `smtp` AND all 4 required SMTP env keys are populated.
      * Renders the ✓ SMTP configured badge in Settings.tsx card header when true.
+     *
+     * Phase 33 follow-up — the keys are `mail.mailers.smtp.*` (Laravel nests
+     * SMTP values there); the previous `mail.host` etc. were always null, so
+     * the badge never turned green. Matches Admin\SettingsController::isMailConfigured().
      */
     private function isMailConfigured(): bool
     {
         if (config('mail.default') !== 'smtp') {
             return false;
         }
-        foreach (['mail.host', 'mail.port', 'mail.username', 'mail.password'] as $key) {
+        foreach (['mail.mailers.smtp.host', 'mail.mailers.smtp.port', 'mail.mailers.smtp.username', 'mail.mailers.smtp.password'] as $key) {
             if (empty(config($key))) {
                 return false;
             }

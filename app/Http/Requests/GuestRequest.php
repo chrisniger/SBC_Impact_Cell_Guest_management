@@ -104,7 +104,13 @@ class GuestRequest extends FormRequest
             'follow_up_contacts' => ['nullable', 'array', 'max:3'],
 
             // Assignment (admin-only via the controller's policy — stripped here too)
-            'follow_officer_id' => ['nullable', 'uuid', 'exists:users,id'],
+            // NOTE: `users.id` is a BIGINT auto-increment PK (not UUID) — the
+            // `uuid` rule previously rejected every admin save of a guest that
+            // had an assigned officer (payload sent follow_officer_id=9, rule
+            // demanded a UUID string → 303 back to the edit form, name never
+            // persisted). `nearest_impact_cell_id` below stays `uuid` because
+            // impact_cells.id IS a UUID PK (HasUuids).
+            'follow_officer_id' => ['nullable', 'integer', 'exists:users,id'],
         ];
     }
 

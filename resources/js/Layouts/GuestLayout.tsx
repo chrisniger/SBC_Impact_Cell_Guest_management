@@ -90,10 +90,10 @@ export default function Guest({ children }: PropsWithChildren) {
                                 Mission Hub
                             </span>
                             <h1 className="text-4xl font-bold leading-[1.1] tracking-tight xl:text-5xl">
-                                Welcome every guest,
+                                Impact Cell Operations,
                                 <br />
                                 <span className="bg-gradient-to-r from-white via-blue-100 to-indigo-200 bg-clip-text text-transparent">
-                                    from hello to home.
+                                    Guest Management.
                                 </span>
                             </h1>
                             <p className="text-base leading-relaxed text-blue-100/85 xl:text-lg">
@@ -107,7 +107,7 @@ export default function Guest({ children }: PropsWithChildren) {
                             {[
                                 {
                                     label: 'Impact Cells',
-                                    desc: '65 teams',
+                                    desc: ' felloship',
                                     icon: (
                                         <path
                                             fillRule="evenodd"
@@ -160,7 +160,7 @@ export default function Guest({ children }: PropsWithChildren) {
 
                     {/* Bottom: Footer */}
                     <div className="relative z-10 flex items-center justify-between text-xs text-blue-100/70">
-                        <span>© {year} SBC Guest Portal</span>
+                        <span>© {year} SBC Portal</span>
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 ring-1 ring-white/10 font-mono">
                             <span className="h-1 w-1 rounded-full bg-emerald-400" />
                             v1.0 · stable

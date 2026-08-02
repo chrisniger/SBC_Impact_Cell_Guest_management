@@ -1,5 +1,6 @@
 import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout';
 import EmptyState from '@/Components/EmptyState';
+import ReadOnlyBanner from '@/Components/ReadOnlyBanner';
 import StatusPill from '@/Components/StatusPill';
 import { Head, Link } from '@inertiajs/react';
 
@@ -38,7 +39,8 @@ export default function ImpactCellsIndex({ cells, activeRole }: { cells: ImpactC
                                 Active role: <span className="font-mono">{activeRole ?? '—'}</span>
                             </p>
                         </div>
-                        {(activeRole === 'Administrator' || activeRole === 'Impact_Cell_Admin') && (
+                        {/* Phase 35 — Impact_Cell_Admin is read-only on Impact Cells; only Administrator can add. */}
+                        {activeRole === 'Administrator' && (
                             <Link
                                 href={route('impact-cells.create')}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
@@ -55,6 +57,14 @@ export default function ImpactCellsIndex({ cells, activeRole }: { cells: ImpactC
             }
         >
             <Head title="Impact Cells" />
+
+            {/* Phase 35 — read-only notice for Impact_Cell_Admin (view-only surface). */}
+            {activeRole === 'Impact_Cell_Admin' && (
+                <ReadOnlyBanner
+                    testId="impact-cells-readonly-banner"
+                    description="Impact_Cell_Admin can view impact cells but cannot add or edit them. Only an Administrator can create, edit, or delete cells."
+                />
+            )}
 
             {cells.length === 0 ? (
                 <EmptyState
