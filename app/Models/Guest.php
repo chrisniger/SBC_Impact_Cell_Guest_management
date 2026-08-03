@@ -49,6 +49,23 @@ class Guest extends Model
     use HasUuids;
     use SoftDeletes;
 
+    /**
+     * The only `impact_status` values the system will persist.
+     *
+     * Single source of truth for BOTH write paths:
+     *   - `GuestController::updateImpactStatus()` (inline pill)
+     *   - `GuestRequest` (full-edit form)
+     * Mirrors `InlineImpactStatusPill.tsx` STATUSES. NULL = not yet marked
+     * (pending). Kept as a plain string list (not a backed PHP enum) so the
+     * DB column stays a nullable varchar and legacy/CSV-imported rows are
+     * still readable (they're bucketed defensively at read time). NOTE: a
+     * legacy value outside this list will 422 on a full-edit save until it's
+     * normalized (the Edit form surfaces it as a disabled "legacy" option) —
+     * CSV import never writes impact_status, so only pre-existing DB rows
+     * can hold such values.
+     */
+    public const IMPACT_STATUSES = ['Contacted', 'Not Contacted', 'Not Reachable'];
+
     protected $fillable = [
         'date',
         'event',

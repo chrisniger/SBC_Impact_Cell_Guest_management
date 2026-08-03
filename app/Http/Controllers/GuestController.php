@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -52,6 +53,26 @@ class GuestController extends Controller
         $user = $request->user();
         $role = $user?->activeRole();
 
+        // 2026-08-03 — Guests REMOVED from the Zonal Coordinator role. The
+        // role's surface is cell-only (assigned Impact Cells + activity);
+        // GuestPolicy::view/update also deny the role for deep-linked
+        // show/edit/update paths. index() has no policy call, so the guard
+        // lives here.
+        abort_if(
+            $role === 'Impact_Zonal_Coordinator',
+            403,
+            'Guests are not part of the Zonal Coordinator role.',
+        );
+
+        // Phase 39 — Impact_Cell_Admin's Guests surface is the "Assigned
+        // Guests" per-cell overview (cross-cell supervisor). A `?cell=`
+        // drill-down renders the standard roster filtered to that cell so
+        // the overview stays clickable. Every other role keeps the legacy
+        // role-scoped guest list below.
+        if (RoleHelper::isImpactCellAdmin($role)) {
+            return $this->assignedGuestsIndex($request);
+        }
+
         $query = Guest::query()->orderByDesc('created_at');
 
         // Per Phase 04 § 3 + Implementation/03 assignment rules:
@@ -85,6 +106,128 @@ class GuestController extends Controller
                 'groupOf'      => $role !== null ? RoleHelper::groupOf($role) : null,
             ],
         ]);
+    }
+
+    /**
+     * Phase 39 — Impact_Cell_Admin "Assigned Guests" surface.
+     *
+     * Without `?cell=` this renders Guests/Assigned: a per-cell overview
+     * of every Impact Cell with Total Assigned / Total Contacted / Total
+     * Pending, so the supervisor can see each cell's contact progress at
+     * a glance (the Impact Cell workflow marks guests assigned to them
+     * from "Not Contacted" → "Contacted").
+     *
+     * With `?cell=<id>` it renders the legacy Guests/Index roster filtered
+     * to that cell (read-only: `editableFields = []` so no dead Edit
+     * buttons — GuestPolicy::update still requires the row to belong to
+     * the admin's own impact_cell_id, which cross-cell supervisors
+     * typically don't have).
+     *
+     * Status bucketing (single source of truth):
+     *   - contacted = impact_status = 'Contacted'
+     *   - pending   = everything else (NULL / 'Not Contacted' /
+     *                 'Not Reachable') — i.e. total − contacted
+     * These literals mirror InlineImpactStatusPill's STATUSES array.
+     */
+    private function assignedGuestsIndex(Request $request): Response
+    {
+        $cellFilter = $request->query('cell');
+
+        if (is_string($cellFilter) && $cellFilter !== '') {
+            $cell = \App\Models\ImpactCell::find($cellFilter);
+            $guests = Guest::where('nearest_impact_cell_id', $cellFilter)
+                ->orderByDesc('created_at')
+                ->paginate(20);
+
+            return Inertia::render('Guests/Index', [
+                'guests'         => GuestResource::collection($guests),
+                'canCreate'      => false,
+                'editableFields' => [],
+                'activeRole'     => $request->user()?->activeRole(),
+                'activeCellName' => $cell?->name,
+                'groups'         => [
+                    'ownedByGroup' => RoleHelper::allGroupOwnedFields(),
+                    'groupOf'      => 'impactCell',
+                ],
+            ]);
+        }
+
+        // One GROUP BY pass over the guests table → per-cell totals, then
+        // a second pass to hydrate every cell (incl. cells with 0 guests).
+        $stats = Guest::query()
+            ->whereNotNull('nearest_impact_cell_id')
+            ->selectRaw('nearest_impact_cell_id')
+            ->selectRaw('COUNT(*) as total')
+            // LOWER(TRIM(...)) is portable (MySQL + SQLite) and remains
+            // defensive even though updateImpactStatus + GuestRequest now
+            // enforce Guest::IMPACT_STATUSES: legacy rows / CSV imports can
+            // still carry case or whitespace variants ('CONTACTED', 'Contacted '),
+            // and this bucketing must classify them correctly regardless.
+            ->selectRaw("SUM(CASE WHEN LOWER(TRIM(impact_status)) = 'contacted' THEN 1 ELSE 0 END) as contacted")
+            ->groupBy('nearest_impact_cell_id')
+            ->get()
+            ->keyBy('nearest_impact_cell_id');
+
+        $cells = \App\Models\ImpactCell::ordered()->get(['id', 'name'])->map(function ($cell) use ($stats) {
+            $row = $stats->get($cell->id);
+            $total = (int) ($row?->total ?? 0);
+            $contacted = (int) ($row?->contacted ?? 0);
+
+            return [
+                'id'             => (string) $cell->id,
+                'name'           => $cell->name,
+                'totalAssigned'  => $total,
+                'totalContacted' => $contacted,
+                'totalPending'   => max(0, $total - $contacted),
+            ];
+        })->values();
+
+        return Inertia::render('Guests/Assigned', [
+            'cells'      => $cells,
+            'totals'     => [
+                'totalCells'     => $cells->count(),
+                'totalAssigned'  => $cells->sum('totalAssigned'),
+                'totalContacted' => $cells->sum('totalContacted'),
+                'totalPending'   => $cells->sum('totalPending'),
+            ],
+            'activeRole' => $request->user()?->activeRole(),
+        ]);
+    }
+
+    /**
+     * Phase 39 — JSON roster for the Assigned Guests inline expandable rows.
+     *
+     * Lazy-loads one cell's guests on expand (the overview page ships zero
+     * guest rows — a 69-cell initial payload would be wasteful). Gated to
+     * Impact_Cell_Admin (the same role that owns the Assigned surface);
+     * returns minimal projected fields, newest first, capped at 100.
+     */
+    public function roster(Request $request): JsonResponse
+    {
+        if (! RoleHelper::isImpactCellAdmin($request->user()?->activeRole())) {
+            abort(403, 'Only Impact Cell Administrators can open cell rosters.');
+        }
+
+        $cellId = (string) $request->query('cell', '');
+        $cell = \App\Models\ImpactCell::find($cellId);
+        if ($cell === null) {
+            return response()->json(['guests' => []]);
+        }
+
+        $guests = Guest::where('nearest_impact_cell_id', $cellId)
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get(['id', 'guest_name', 'phone', 'impact_status', 'contacted_status', 'created_at'])
+            ->map(fn (Guest $g) => [
+                'id'              => $g->id,
+                'guestName'       => $g->guest_name,
+                'phone'           => $g->phone,
+                'impactStatus'    => $g->impact_status,
+                'contactedStatus' => $g->contacted_status,
+                'createdAt'       => $g->created_at?->toIso8601String(),
+            ]);
+
+        return response()->json(['guests' => $guests]);
     }
 
     /** GET /guests/{id} */
@@ -135,10 +278,14 @@ class GuestController extends Controller
             : [];
 
         return Inertia::render('Guests/Edit', [
-            'guest'          => GuestResource::make($guest)->resolve($request),
-            'editableFields' => $editableKeys,
-            'impactCells'    => $impactCells,
-            'activeRole'     => $role,
+            'guest'               => GuestResource::make($guest)->resolve($request),
+            'editableFields'      => $editableKeys,
+            'impactCells'         => $impactCells,
+            // Phase 39 — the Edit form's impact_status field is now a select
+            // constrained to the canonical statuses (was a free-text input
+            // that could persist anything). Server remains the source of truth.
+            'impactStatusOptions' => Guest::IMPACT_STATUSES,
+            'activeRole'          => $role,
         ]);
     }
 
@@ -287,16 +434,24 @@ class GuestController extends Controller
         $guest = Guest::findOrFail($id);
         $this->authorize('update', $guest);
 
+        // Coerce '' → null BEFORE validation so the Clear-status path stays
+        // valid under the enum rule (the pill sends explicit null, but a
+        // hand-rolled client may send an empty string; ConvertEmptyStringsToNull
+        // normally handles this, this is belt-and-braces for odd content types).
+        $status = $request->input('impact_status');
+        if ($status === '') {
+            $status = null;
+        }
+        $request->merge(['impact_status' => $status]);
+
         $validated = $request->validate([
-            'impact_status' => ['nullable', 'string', 'max:64'],
+            // Phase 39 — enum-constrained: only Contacted / Not Contacted /
+            // Not Reachable may be persisted (Guest::IMPACT_STATUSES). NULL
+            // (unset) is always allowed for the pending state.
+            'impact_status' => ['nullable', 'string', 'max:64', Rule::in(Guest::IMPACT_STATUSES)],
         ]);
 
-        $value = $validated['impact_status'];
-        if ($value === '') {
-            $value = null;
-        }
-
-        $guest->update(['impact_status' => $value]);
+        $guest->update(['impact_status' => $validated['impact_status']]);
 
         return response()->json([
             'success'       => true,

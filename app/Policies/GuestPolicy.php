@@ -38,6 +38,13 @@ class GuestPolicy
      */
     public function viewAny(User $user): bool
     {
+        // 2026-08-03 — Guests removed from the Zonal Coordinator role (same
+        // rule as view()/update()); GuestController::index() also 403s the
+        // role explicitly since index() predates an authorize('viewAny') call.
+        if ($user->activeRole() === 'Impact_Zonal_Coordinator') {
+            return false;
+        }
+
         return true;
     }
 
@@ -45,16 +52,20 @@ class GuestPolicy
      * Viewing a single guest:
      *   - Administrator: always.
      *   - FollowUpOfficer / Follow_UP_Admin: only when assigned to them.
-     *   - Impact Cell group (except Zonal Cordinator): only when the guest's
+     *   - Impact Cell group (except Zonal Coordinator): only when the guest's
      *     nearest_impact_cell_id matches the user's impact_cell_id.
-     *   - Impact_Zonal_Coordinator: sees all guests (zone-wide view).
+     *   - Impact_Zonal_Coordinator: DENIED (2026-08-03 — guests removed from
+     *     the zonal role; surface is cell-only).
      *   - Follow Up / Follow Up View Only: all guests (team queue).
      */
     public function view(User $user, Guest $guest): bool
     {
         $role = $user->activeRole();
 
-        if ($role === 'Administrator' || $role === 'Impact_Zonal_Coordinator') {
+        // 2026-08-03 — Guests REMOVED from the Zonal Coordinator role. The
+        // coordinator's surface is cell-only (assigned Impact Cells + their
+        // activity); guest rows are no longer visible to it.
+        if ($role === 'Administrator') {
             return true;
         }
 
@@ -89,9 +100,10 @@ class GuestPolicy
      * Updating a guest:
      *   - Administrator: always.
      *   - FollowUpOfficer / Follow_UP_Admin: only when assigned to them.
-     *   - Impact Cell group (except Zonal Cordinator): only when the guest's
+     *   - Impact Cell group (except Zonal Coordinator): only when the guest's
      *     nearest_impact_cell_id matches the user's impact_cell_id.
-     *   - Impact_Zonal_Coordinator: can update all guests (zone-wide).
+     *   - Impact_Zonal_Coordinator: DENIED (2026-08-03 — guests removed from
+     *     the zonal role).
      *   - Follow_UP: updates all guests (column-level restriction via Form Request).
      *   - Follow_UP_View_Only: NO (read-only).
      */
@@ -99,7 +111,8 @@ class GuestPolicy
     {
         $role = $user->activeRole();
 
-        if ($role === 'Administrator' || $role === 'Impact_Zonal_Coordinator') {
+        // 2026-08-03 — Zonal Coordinators can no longer edit guests (see view()).
+        if ($role === 'Administrator') {
             return true;
         }
 

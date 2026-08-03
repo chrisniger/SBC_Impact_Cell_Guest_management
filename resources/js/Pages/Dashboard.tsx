@@ -79,11 +79,11 @@ type RecentSubmission = {
     createdAt: string | null;
 };
 
+// 2026-08-03 — guests removed from the Zonal Coordinator surface; the zonal
+// dashboard now shows ONLY the cells Admin assigned to the coordinator.
 type ZonalKpis = {
     totalCells: number;
     totalSubmissions: number;
-    pendingGuests: number;
-    contactedGuests: number;
 };
 
 // Phase 09 — Impact Cell Administrator (cross-cell + cross-zonal supervisor).
@@ -510,7 +510,7 @@ function ZonalHeader({ activeRole }: { activeRole: string | null }) {
                 Zonal Coordinator
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                Zone-wide overview
+                Your zone overview
             </h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Active role: <span className="font-mono text-gray-700 dark:text-gray-300">{activeRole ?? '—'}</span>
@@ -1149,14 +1149,12 @@ function ZonalDashboard({ kpis, cells, submissions }: { kpis: ZonalKpis; cells: 
             <DashboardSection
                 eyebrow="Zone Snapshot"
                 title="Your zone in numbers"
-                description="Cells, submissions, and follow-up volume for the cells under your supervision."
+                description="Cell and submission totals for the Impact Cells assigned to you."
                 icon={zapIconPath}
             >
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <KPICard accent="indigo"  caption="Impact Cells"      value={kpis.totalCells}        trend="in your zone" />
-                    <KPICard accent="emerald" caption="Total Submissions" value={kpis.totalSubmissions}  trend="all types" />
-                    <KPICard accent="amber"   caption="Pending Guests"    value={kpis.pendingGuests}     trend="not yet contacted" />
-                    <KPICard accent="emerald" caption="Contacted Guests"  value={kpis.contactedGuests}   trend="follow-up made" />
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+                    <KPICard accent="indigo"  caption="Impact Cells"      value={kpis.totalCells}        trend="assigned to you" />
+                    <KPICard accent="emerald" caption="Total Submissions" value={kpis.totalSubmissions}  trend="across your cells" />
                 </div>
             </DashboardSection>
 

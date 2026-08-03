@@ -16,6 +16,8 @@ interface EditProps {
     guest: GuestDetail;
     editableFields: string[];
     impactCells: ImpactCellRow[];
+    /** Phase 39 — canonical impact_status values (server passes Guest::IMPACT_STATUSES). */
+    impactStatusOptions?: string[];
     activeRole: string | null;
 }
 
@@ -44,6 +46,44 @@ const MARITAL_OPTIONS: Array<{ value: string; label: string }> = [
 const inputCls =
     'mt-1 block w-full rounded-lg border-gray-300 bg-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 sm:text-sm';
 const labelCls = 'block text-sm font-semibold text-gray-700 dark:text-gray-200';
+
+/**
+ * Phase 39 — impact_status is enum-constrained server-side (Guest::IMPACT_STATUSES),
+ * so the Edit form offers a select instead of the old free-text input. A legacy
+ * DB value that isn't in the canonical list renders as a disabled "legacy" option
+ * (the user must pick a canonical value or unset before saving — the server would
+ * reject the legacy value anyway).
+ */
+const IMPACT_STATUS_FALLBACK = ['Contacted', 'Not Contacted', 'Not Reachable'];
+
+function ImpactStatusSelect({
+    value,
+    options,
+    onChange,
+    className,
+}: {
+    value: string;
+    options?: string[];
+    onChange: (v: string) => void;
+    className: string;
+}) {
+    const allowed = options ?? IMPACT_STATUS_FALLBACK;
+    const legacy = value && !allowed.includes(value) ? value : null;
+
+    return (
+        <select id="impact_status" value={value} onChange={(e) => onChange(e.target.value)} className={className}>
+            <option value="">— (unset) —</option>
+            {legacy && (
+                <option value={legacy} disabled>
+                    ⚠ {legacy} (legacy value — pick one below)
+                </option>
+            )}
+            {allowed.map((v) => (
+                <option key={v} value={v}>{v}</option>
+            ))}
+        </select>
+    );
+}
 
 function withCurrent(
     options: Array<{ value: string; label: string }>,
@@ -110,7 +150,7 @@ const phoneIcon = <><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63
 const cellIcon = <><path d="M3 3h18v18H3z" /><path d="M3 9h18M9 21V9" /></>;
 const teamIcon = <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>;
 
-export default function Edit({ guest, editableFields, impactCells, activeRole }: EditProps) {
+export default function Edit({ guest, editableFields, impactCells, impactStatusOptions, activeRole }: EditProps) {
     const { data, setData, put, processing, errors } = useForm<GuestDetail>({ ...guest });
 
     const canEdit = (field: string): boolean => editableFields.includes(field);
@@ -330,8 +370,12 @@ export default function Edit({ guest, editableFields, impactCells, activeRole }:
                                 )}
                                 {canEdit('impact_status') && (
                                     <FormField label="Impact status" id="impact_status" error={fieldErr('impact_status')}>
-                                        <input id="impact_status" type="text" value={data.impact_status ?? ''}
-                                            onChange={(e) => setData('impact_status', e.target.value)} className={inputCls} />
+                                        <ImpactStatusSelect
+                                            value={data.impact_status ?? ''}
+                                            options={impactStatusOptions}
+                                            onChange={(v) => setData('impact_status', v || null)}
+                                            className={inputCls}
+                                        />
                                     </FormField>
                                 )}
                             </div>

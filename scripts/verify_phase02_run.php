@@ -45,15 +45,15 @@ foreach (Illuminate\Support\Arr::flatten(RoleHelper::GROUP_GUEST_OWNER) as $fiel
         'camelCase or non-snake_case keys silently strip fields in production');
 }
 
-$expectedNames = [
-    'Administrator', 'FollowUpOfficer', 'Follow_UP',
-    'Follow_UP_Admin', 'Follow_UP_View_Only',
-    'Impact_Cell_Admin', 'Impact_Cell_Report', 'Impact_Leaders',
-    'Impact_Zonal_Cordinator',
-    'Supervisor',
-];
+// Derive from RoleHelper::ROLE_NAMES (the single source of truth per its own
+// docblock) instead of a hardcoded literal. The hardcoded list is exactly what
+// went stale in Phase 14: the codebase fixed the 'Impact_Zonal_Cordinator' ->
+// 'Impact_Zonal_Coordinator' spelling, but this list kept the typo — and only
+// passed because the DB still carried the typo row. Hardening round 2026-08-03:
+// derive + sort BOTH sides so no spelling drift can ever pass this gate again.
+$expectedNames = collect(RoleHelper::ROLE_NAMES)->sort()->values()->toArray();
 $actualNames = Role::pluck('name')->sort()->values()->toArray();
-check("role names match (alphabetic)", $actualNames === $expectedNames, "got [" . implode(',', $actualNames) . "]");
+check("role names match RoleHelper::ROLE_NAMES (alphabetic)", $actualNames === $expectedNames, "got [" . implode(',', $actualNames) . "]");
 
 // 2. Admin user
 echo "\n[2] sbcadmin user\n";

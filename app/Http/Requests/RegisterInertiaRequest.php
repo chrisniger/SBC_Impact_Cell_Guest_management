@@ -48,6 +48,22 @@ use Illuminate\Validation\Rules\Password;
 class RegisterInertiaRequest extends FormRequest
 {
     /**
+     * 2026-08-03 — the 7 optional cell-setup fields. Shared by the
+     * prepareForValidation() sentinel-string normalisation so the list of
+     * fields that may arrive as the literal "undefined"/"null" lives in one
+     * place (mirrors Auth/Register.tsx HIDDEN_CELL_FIELDS).
+     */
+    private const CELL_FIELDS = [
+        'impact_cell_id',
+        'leader_name',
+        'leader_phone',
+        'assistant_name',
+        'assistant_phone',
+        'welfare_officer_name',
+        'welfare_officer_phone',
+    ];
+
+    /**
      * Public form — no auth required.
      * The Phase 13 product req: any visitor can self-register as
      * `Impact_Leaders` + the two FollowUpOfficer-tier roles. Everything
@@ -80,6 +96,22 @@ class RegisterInertiaRequest extends FormRequest
         // can contain a single string if the form is hand-rolled.
         if (isset($merged['roles']) && ! is_array($merged['roles'])) {
             $merged['roles'] = [$merged['roles']];
+        }
+
+        // 2026-08-03 — zonal-only signup hardening. React-controlled forms can
+        // ship the LITERAL STRING "undefined" (or "null") for fields that were
+        // absent from the DOM at submit time — the cell-setup panel is unmounted
+        // unless Impact_Leaders is checked, so impact_cell_id / leader_* arrived
+        // as "undefined" and failed the `uuid` rule with an invisible error
+        // (the InputError renders inside the unmounted panel). Normalise these
+        // sentinel strings back to null so a missing optional field is treated
+        // as absent, never as garbage. See also Auth/Register.tsx toggleRole()
+        // (function-form setData) + the toWire() submit sanitizer.
+        foreach (self::CELL_FIELDS as $field) {
+            if (isset($merged[$field])
+                && ($merged[$field] === 'undefined' || $merged[$field] === 'null')) {
+                $merged[$field] = null;
+            }
         }
 
         $this->replace($merged);

@@ -430,18 +430,30 @@ class DashboardController extends Controller
     }
 
     /**
-     * Impact Zonal Cordinator dashboard.
+     * Impact Zonal Coordinator dashboard.
      *
-     * Shows all impact cells, recent submissions across their cells,
-     * and guest KPIs (pending + contacted).
+     * Scope (2026-08-03 user directive): the zonal dashboard reflects ONLY
+     * the Impact Cells Admin assigned to this coordinator (impact_cell_user
+     * pivot, via User::zonalImpactCellIds()) — never the whole system. The
+     * previous build showed every cell + every submission + system-wide guest
+     * KPIs, leaking data beyond the coordinator's zone. Guests are REMOVED
+     * from the zonal role surface entirely (sidebar, KPIs, policy, search),
+     * so there are no guest KPIs here anymore — only cells + submissions for
+     * the assigned zone.
      */
     private function zonalDashboard(User $user, ?string $role): Response
     {
-        $cells = ImpactCell::ordered()->get()->map(fn ($c) => [
-            'id' => $c->id, 'name' => $c->name, 'is_primary' => $c->is_primary,
-        ]);
+        $cellIds = $user->zonalImpactCellIds();
+
+        $cells = ImpactCell::whereIn('id', $cellIds)
+            ->ordered()
+            ->get(['id', 'name', 'is_primary'])
+            ->map(fn ($c) => [
+                'id' => $c->id, 'name' => $c->name, 'is_primary' => $c->is_primary,
+            ]);
 
         $submissions = ImpactSubmission::with('impactCell:id,name')
+            ->whereIn('impact_cell_id', $cellIds)
             ->latest()->limit(10)->get()
             ->map(fn (ImpactSubmission $s) => [
                 'id' => $s->id, 'type' => $s->type,
@@ -450,24 +462,16 @@ class DashboardController extends Controller
                 'createdAt' => $s->created_at?->toIso8601String(),
             ]);
 
-        $pendingGuests = Guest::where(function ($q) {
-            $q->whereNull('contacted_status')->orWhere('contacted_status', '')
-              ->orWhereIn('contacted_status', ['No', 'Not Contacted']);
-        })->count();
-
-        $contactedGuests = Guest::whereNotNull('contacted_status')
-            ->where('contacted_status', '!=', '')->count();
-
         return Inertia::render('Dashboard', [
             'variant'  => 'zonal',
             'kpis'     => [
-                'totalCells'       => $cells->count(),
-                'totalSubmissions' => ImpactSubmission::count(),
-                'pendingGuests'    => $pendingGuests,
-                'contactedGuests'  => $contactedGuests,
+                // Assigned cells only — the "Impact Cells" card must reflect
+                // the coordinator's zone, not the system-wide cell count.
+                'totalCells'       => count($cellIds),
+                'totalSubmissions' => ImpactSubmission::whereIn('impact_cell_id', $cellIds)->count(),
             ],
             'queue'               => [],
-            'zonalCells'          => $cells,
+            'zonalCells'          => $cells->values(),
             'zonalSubmissions'    => $submissions,
             'activeRole'          => $role,
             'activeGroup'         => 'impactCell',
@@ -1055,14 +1059,6 @@ class DashboardController extends Controller
                 ->orderByDesc('created_at')->limit(5)
                 ->get(['id', 'guest_name', 'phone']) as $g) {
                 $items[] = ['id' => (string) $g->id, 'category' => 'guest', 'label' => $g->guest_name ?: '(unnamed)', 'subtitle' => $g->phone ?? '', 'href' => route('guests.show', $g->id)];
-            }
-        } elseif ($role === 'Impact_Zonal_Coordinator') {
-            if (! empty($zonalIds)) {
-                foreach (Guest::whereIn('nearest_impact_cell_id', $zonalIds)
-                    ->orderByDesc('created_at')->limit(5)
-                    ->get(['id', 'guest_name', 'phone']) as $g) {
-                    $items[] = ['id' => (string) $g->id, 'category' => 'guest', 'label' => $g->guest_name ?: '(unnamed)', 'subtitle' => $g->phone ?? '', 'href' => route('guests.show', $g->id)];
-                }
             }
         } elseif ($group === 'followUpOfficer') {
             foreach (Guest::where('follow_officer_id', $user->id)

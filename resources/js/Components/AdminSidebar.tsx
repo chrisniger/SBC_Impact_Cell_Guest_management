@@ -8,7 +8,7 @@ import AdminSidebarNavItem from '@/Components/AdminSidebarNavItem';
  *   2. Impact Cell Leader   (8 nav items)
  *   3. Follow-Up Officer    (3 nav items)
  *   4. Follow-Up Team       (3 nav items)
- *   5. Zonal Coordinator    (5 nav items)
+ *   5. Zonal Coordinator    (4 nav items)
  *
  * Visibility rules:
  *   - `activeRole === 'Administrator'`  → render ALL 5 sections.
@@ -141,8 +141,11 @@ const SECTIONS: Section[] = [
             { label: 'Impact Cells',    href: route('impact-cells.index'),        routeName: 'impact-cells.index',        iconPath: ICON_CELLS },
             { label: 'Cell Activity',   href: route('impact-submissions.index'),  routeName: 'impact-submissions.index',  iconPath: ICON_SUBMIT },
             { label: 'Leadership Board', href: route('leadership.index'),         routeName: 'leadership.index',          iconPath: ICON_CELLS },
-            { label: 'Guests',          href: route('guests.index'),              routeName: 'guests.index',              iconPath: ICON_USERS },
-            { label: 'Export CSV',      href: route('csv.export'),                routeName: 'csv.export',                iconPath: ICON_DOWNLOAD },
+            // 2026-08-03 — Guests + Export CSV REMOVED from the zonal role:
+            // the coordinator's surface is cell-only. (Export CSV also 403'd
+            // for zonals — CsvExportController gates to admin + follow-up
+            // groups — so the old item was a dead link like the pre-Phase-36
+            // "Reports" entry.)
         ],
     },
     // Phase 09 — Impact_Cell_Admin (cross-cell + cross-zonal supervisor).
@@ -155,7 +158,9 @@ const SECTIONS: Section[] = [
             { label: 'Submissions',       href: route('impact-submissions.index'),      routeName: 'impact-submissions.index',      iconPath: ICON_SUBMIT },
             { label: 'My Reports',        href: route('impact-submissions.my-reports'), routeName: 'impact-submissions.my-reports', iconPath: ICON_REPORTS },
             { label: 'Leadership Board',  href: route('leadership.index'),              routeName: 'leadership.index',              iconPath: ICON_CELLS },
-            { label: 'Guests',            href: route('guests.index'),                  routeName: 'guests.index',                  iconPath: ICON_USERS },
+            // Phase 39 — the Impact_Cell_Admin Guests surface is the per-cell
+            // "Assigned Guests" overview (see GuestController::assignedGuestsIndex).
+            { label: 'Assigned Guests',   href: route('guests.index'),                  routeName: 'guests.index',                  iconPath: ICON_USERS },
         ],
     },
 ];

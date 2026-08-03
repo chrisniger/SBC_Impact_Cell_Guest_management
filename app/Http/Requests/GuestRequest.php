@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Guest;
 use App\Support\RoleHelper;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Guest form request — Phase 04.
@@ -86,7 +88,9 @@ class GuestRequest extends FormRequest
 
             // Impact Cell group
             'nearest_impact_cell_id' => ['nullable', 'uuid', 'exists:impact_cells,id'],
-            'impact_status'          => ['nullable', 'string', 'max:64'],
+            // Phase 39 — enum-constrained (same list as the inline pill):
+            // only Contacted / Not Contacted / Not Reachable may be persisted.
+            'impact_status'          => ['nullable', 'string', 'max:64', Rule::in(Guest::IMPACT_STATUSES)],
 
             // Follow Up Officer group — contact + visitation
             'contacted_status'  => ['nullable', 'string', 'max:64'],

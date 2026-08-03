@@ -35,6 +35,8 @@ interface GuestsPageProps {
     canCreate: boolean;
     editableFields: string[];
     activeRole: string | null;
+    /** Phase 39 — set when Impact_Cell_Admin drills into one cell's roster (?cell=). */
+    activeCellName?: string | null;
     groups: {
         ownedByGroup: string[];
         groupOf: string | null;
@@ -53,7 +55,7 @@ function StatusBadge({ value }: { value: string | null }) {
     return <StatusPill tone={tone}>{value}</StatusPill>;
 }
 
-export default function Index({ guests, canCreate, editableFields, activeRole, groups }: GuestsPageProps) {
+export default function Index({ guests, canCreate, editableFields, activeRole, activeCellName, groups }: GuestsPageProps) {
     const canEditAny = (editableFields ?? []).length > 0;
 
     return (
@@ -61,10 +63,14 @@ export default function Index({ guests, canCreate, editableFields, activeRole, g
             header={
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
-                        My Guests
+                        {activeCellName ? 'Guests · Impact Cell Administrator' : 'My Guests'}
                     </p>
                     <h2 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                        {groups.groupOf === 'followUpTeam' ? 'Assigned Guests' : 'Guests'}
+                        {activeCellName
+                            ? `Guests · ${activeCellName}`
+                            : groups.groupOf === 'followUpTeam'
+                                ? 'Assigned Guests'
+                                : 'Guests'}
                     </h2>
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                         Active role: <span className="font-mono">{activeRole ?? '—'}</span> · Group: <span className="font-mono">{groups.groupOf ?? '—'}</span> · You can edit: <span className="font-mono">{groups.ownedByGroup.length}</span> field{groups.ownedByGroup.length === 1 ? '' : 's'}
@@ -72,9 +78,27 @@ export default function Index({ guests, canCreate, editableFields, activeRole, g
                 </div>
             }
         >
-            <Head title="Guests" />
+            <Head title={activeCellName ? `Guests · ${activeCellName}` : 'Guests'} />
 
             <div className="space-y-4">
+                {activeCellName && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-3 dark:border-indigo-900/40 dark:bg-indigo-950/30" data-testid="assigned-cell-banner">
+                        <p className="text-sm text-indigo-900 dark:text-indigo-200">
+                            Showing the roster of guests assigned to <span className="font-semibold">{activeCellName}</span>.
+                        </p>
+                        <Link
+                            href={route('guests.index')}
+                            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-100/70 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700"
+                            data-testid="assigned-back-link"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                                <line x1="19" y1="12" x2="5" y2="12" />
+                                <polyline points="12 19 5 12 12 5" />
+                            </svg>
+                            Back to Assigned Guests
+                        </Link>
+                    </div>
+                )}
                 {guests.data.length === 0 ? (
                     <EmptyState
                         title="No guests yet"

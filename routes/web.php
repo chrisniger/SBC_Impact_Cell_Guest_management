@@ -66,6 +66,9 @@ Route::middleware('auth')->group(function () {
     // Phase 05/06/07 will flesh out the per-group dashboards.
     Route::get   ('/guests',                  [\App\Http\Controllers\GuestController::class, 'index'])->name('guests.index');
     Route::post  ('/guests',                  [\App\Http\Controllers\GuestController::class, 'store'])->name('guests.store');
+    // Phase 39 — JSON roster for the Assigned Guests inline expandable rows.
+    // MUST be registered BEFORE /guests/{id} so 'roster' isn't captured as an id.
+    Route::get   ('/guests/roster',           [\App\Http\Controllers\GuestController::class, 'roster'])->name('guests.roster');
     Route::get   ('/guests/{id}/edit',        [\App\Http\Controllers\GuestController::class, 'edit'])->name('guests.edit');
     Route::get   ('/guests/{id}',             [\App\Http\Controllers\GuestController::class, 'show'])->name('guests.show');
     Route::put   ('/guests/{id}',             [\App\Http\Controllers\GuestController::class, 'update'])->name('guests.update');

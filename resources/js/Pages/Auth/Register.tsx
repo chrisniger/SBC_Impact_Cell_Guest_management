@@ -95,29 +95,49 @@ export default function Register({
         // Safe for normal typing too: for typed input the DOM value already
         // matches state, so the merge is a no-op for those fields.
         const fd = new FormData(e.currentTarget);
+
+        // Sanitizer (2026-08-03 zonal-only signup bug): fields that are NOT
+        // in the DOM return null from FormData, and `?? prev.x` fell through
+        // to undefined for fields whose state had been wiped (see toggleRole
+        // below) — the wire then carried the LITERAL STRING "undefined",
+        // which the server's `uuid` rule on impact_cell_id rejected with an
+        // invisible error (the InputError lives inside the unrendered cell
+        // panel). Missing fields must collapse to '' — never "undefined".
+        const toWire = (v: unknown): string =>
+            v === null || v === undefined ? '' : String(v);
+
         setData((prev) => ({
             ...prev,
-            name: String(fd.get('name') ?? prev.name),
-            email: String(fd.get('email') ?? prev.email),
-            password: String(fd.get('password') ?? prev.password),
-            password_confirmation: String(
+            name: toWire(fd.get('name') ?? prev.name),
+            email: toWire(fd.get('email') ?? prev.email),
+            password: toWire(fd.get('password') ?? prev.password),
+            password_confirmation: toWire(
                 fd.get('password_confirmation') ?? prev.password_confirmation,
             ),
-            impact_cell_id: String(fd.get('impact_cell_id') ?? prev.impact_cell_id),
-            leader_name: String(fd.get('leader_name') ?? prev.leader_name),
-            leader_phone: String(fd.get('leader_phone') ?? prev.leader_phone),
-            assistant_name: String(fd.get('assistant_name') ?? prev.assistant_name),
-            assistant_phone: String(fd.get('assistant_phone') ?? prev.assistant_phone),
-            welfare_officer_name: String(
+            impact_cell_id: toWire(
+                fd.get('impact_cell_id') ?? prev.impact_cell_id,
+            ),
+            leader_name: toWire(fd.get('leader_name') ?? prev.leader_name),
+            leader_phone: toWire(fd.get('leader_phone') ?? prev.leader_phone),
+            assistant_name: toWire(
+                fd.get('assistant_name') ?? prev.assistant_name,
+            ),
+            assistant_phone: toWire(
+                fd.get('assistant_phone') ?? prev.assistant_phone,
+            ),
+            welfare_officer_name: toWire(
                 fd.get('welfare_officer_name') ?? prev.welfare_officer_name,
             ),
-            welfare_officer_phone: String(
+            welfare_officer_phone: toWire(
                 fd.get('welfare_officer_phone') ?? prev.welfare_officer_phone,
             ),
         }));
 
         post(route('register'), {
-            onFinish: () => reset('password', 'password_confirmation'),
+            // onSuccess (not onFinish): a FAILED submit must keep the typed
+            // password so the user can correct the offending field instead of
+            // re-typing it — onFinish also fires on validation errors.
+            onSuccess: () => reset('password', 'password_confirmation'),
         });
     };
 
@@ -130,12 +150,24 @@ export default function Register({
         const next = data.roles.includes(role)
             ? data.roles.filter((r) => r !== role)
             : [...data.roles, role];
-        setData({
+        // Function-form setData with a full spread — NOT object form. Inertia
+        // v2's `setData(keyOrData)` does `commitData(keyOrData)` i.e. REPLACES
+        // the entire form data with the given object (verified against
+        // @inertiajs/react 2.3.27). The old object form silently wiped every
+        // field not listed here (name/email/password/impact_cell_id/leader_*),
+        // which is exactly how the 2026-08-03 zonal-only signup bug started:
+        // wiped state + the submit sanitizer gap → literal "undefined" on the
+        // wire → server `uuid` rejection → invisible registration failure.
+        setData((prev) => ({
+            ...prev,
             roles: next,
-            active_role: next.includes(data.active_role)
-                ? data.active_role
+            // Use prev.active_role (not the render-closure data.active_role)
+            // inside the updater — identical today, but immune to stale
+            // closure reads if React ever batches the update.
+            active_role: next.includes(prev.active_role)
+                ? prev.active_role
                 : (next[0] ?? ''),
-        });
+        }));
         // Drop stale role errors ('Pick at least one role.', 'That role is
         // not available for self-signup.') as soon as the user changes the
         // selection — the server keys array-rule failures per-index
@@ -429,6 +461,13 @@ export default function Register({
                                 an{' '}
                                 <span className="font-mono">Impact_Zonal_Coordinator</span> signup is cell-less at this step (Admin assigns your zone later).
                             </p>
+                            {/* 2026-08-03: server errors on the hidden cell fields were
+                                invisible (their InputErrors live inside the unrendered
+                                panel above). Surface them here so a rejection is never
+                                a silent "nothing happened". */}
+                            {HIDDEN_CELL_FIELDS.filter((f) => errors[f]).map((f) => (
+                                <InputError key={f} message={errors[f]} className="mt-1.5" />
+                            ))}
                         </div>
                     )}
 
@@ -464,6 +503,23 @@ export default function Register({
         </GuestLayout>
     );
 }
+
+/**
+ * 2026-08-03 — the 7 optional cell-setup fields whose InputErrors render
+ * ONLY inside the Impact_Leaders cell panel. When that panel is unmounted
+ * (e.g. Impact_Zonal_Coordinator-only signup), a server rejection on one of
+ * these fields would otherwise be completely invisible to the user. The
+ * register-cell-setup-empty placeholder renders their errors as a fallback.
+ */
+const HIDDEN_CELL_FIELDS = [
+    'impact_cell_id',
+    'leader_name',
+    'leader_phone',
+    'assistant_name',
+    'assistant_phone',
+    'welfare_officer_name',
+    'welfare_officer_phone',
+] as const;
 
 /**
  * Phase 13 — Laravel keys per-array-rule failures at `${field}.0`,

@@ -20,15 +20,12 @@ class ZonalCoordinatorSeeder extends Seeder
 
         $user->assignRole('Impact_Zonal_Coordinator');
 
-        // Ensure active_role is set even if user already existed without it.
-        if ($user->active_role === 'Impact_Zonal_Cordinator') {
-            // Repair only the known pre-Phase-14 fixture state. Do not
-            // reset a healthy user's password merely because an admin
-            // changed their active role after signup.
-            $user->update([
-                'password' => '//Zonal##101',
-                'active_role' => 'Impact_Zonal_Coordinator',
-            ]);
-        }
+        // NOTE (orphan-role hardening round, 2026-08-03): the pre-Phase-14
+        // "repair typo'd active_role" branch was REMOVED here. That state
+        // (users.active_role === 'Impact_Zonal_Cordinator') can no longer
+        // exist on any migrated DB: migration
+        // 2026_08_03_100000_repair_orphan_impact_zonal_typo_role.php normalises
+        // users.active_role in every DB state (fresh, re-imported, or orphaned).
+        // Keeping the branch would have been dead code referencing the typo.
     }
 }

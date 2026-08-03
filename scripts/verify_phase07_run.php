@@ -254,8 +254,9 @@ check(17, "GuestController::updateImpactStatus exists + authorize('update') + JS
     $hasUpdateMethod && $hasAuthorize && $hasJsonResp,
     "method signature OR authorize OR JSON response shape missing");
 
-$validateImpactStatus = has($guestCtrl, "'impact_status' => ['nullable', 'string', 'max:64']") > -1;
-check(18, "updateImpactStatus() validates impact_status (nullable|string|max:64)",
+$validateImpactStatus = has($guestCtrl, "Rule::in(Guest::IMPACT_STATUSES)") > -1
+    && has($guestCtrl, "'impact_status' => ['nullable', 'string', 'max:64'") > -1;
+check(18, "updateImpactStatus() validates impact_status (nullable|string|max:64 + enum Rule::in(Guest::IMPACT_STATUSES))",
     $validateImpactStatus,
     'impact_status validation rule missing — server accepts any payload');
 
