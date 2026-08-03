@@ -104,6 +104,61 @@ If any verifier doesn't pass, **do not proceed** — fix the regression first. S
 
 ---
 
+## 2b. Production deploy — after every `git pull` (Hostinger)
+
+> The everyday prod update flow is `git pull` + the block below. This is the
+> **verified** command set for the production box (plain `php`/`npm` do NOT
+> resolve in the SSH shell — use the full alt-php84 path + export the
+> alt-nodejs22 PATH). Same block lives at the top of
+> `scripts/HOSTINGER_DEPLOY_CHEATSHEET.md`.
+
+```bash
+# 1. SSH in
+ssh u188660189@ssh.hostinger.com
+
+# 2. Project root — where composer.json lives (run `pwd` to confirm)
+cd /home/u188660189/domains/app.summitdata.one/public_html
+
+# 3. Full-path binaries
+PHP=/opt/alt/php84/usr/bin/php
+export PATH=/opt/alt/alt-nodejs22/root/bin:$PATH
+
+# 4. Pull the update branch
+git pull origin update
+
+# 5. Composer + frontend build (skip npm if no JS/React changes in the pull)
+$PHP /opt/alt/php84/usr/bin/composer install --optimize-autoloader --no-dev --no-interaction --prefer-dist
+npm ci --no-audit --no-fund && npm run build
+
+# 6. Migrate + idempotent seeders (both safe to re-run)
+$PHP artisan migrate --force --no-interaction
+$PHP artisan db:seed --class=RolesAndPermissionsSeeder --force
+$PHP artisan db:seed --class=ImpactCellSeeder --force
+
+# 7. Cache trio + storage link (RE-RUN after any .env change too!)
+$PHP artisan config:cache && $PHP artisan route:cache && $PHP artisan view:cache && $PHP artisan storage:link
+
+# 8. Permissions
+chmod -R 775 storage bootstrap/cache && chown -R u188660189:www-data storage bootstrap/cache
+
+# 9. Verify
+curl -s -o /dev/null -w 'home: %{http_code}\n' https://app.summitdata.one/
+curl -s -o /dev/null -w 'register: %{http_code}\n' https://app.summitdata.one/register
+#    Expect 200 for both. Hard-refresh the browser (Ctrl-Shift-R) after.
+```
+
+**Why the two seeders are in every pull:** both are `firstOrCreate`-idempotent,
+so re-running is a no-op on healthy DBs but repairs the two incidents seen in
+production — a missing `roles` row makes `/register` return **503** (Phase 14
+guard), and a missing `impact_cells` row empties the register page's cell
+dropdown.
+
+**Maintenance-mode gotcha:** if `$PHP artisan down` is ever run before a
+deploy, the block above does NOT re-enable the app — `$PHP artisan up` must be
+the last step. The site was once found stuck in `down` (all pages 503).
+
+---
+
 ## 3. Tech stack
 
 | Layer          | Choice                                             | Why                                                                                                                                         |
