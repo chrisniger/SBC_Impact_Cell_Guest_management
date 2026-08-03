@@ -1,14 +1,92 @@
 import { PageProps } from '@/types';
 import { Head, Link } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
+
+/**
+ * Shared button primitives (2026-08-03 mobile pass).
+ *
+ * Mobile-first sizing per the responsive spec:
+ *   - height 40px (py-2.5 + text-sm line-height), horizontal padding 16–20px
+ *   - border-radius 12px (rounded-xl)
+ *   - font-size 14px (text-sm), whitespace-nowrap so labels never wrap/overflow
+ *   - icons aligned via inline-flex + items-center + gap
+ */
+const btnBase =
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950';
+
+const btnFilled = `${btnBase} bg-indigo-600 px-4 py-2.5 text-white shadow-sm hover:bg-indigo-700 hover:shadow-md`;
+
+const btnFilledHero = `${btnBase} bg-indigo-600 px-5 py-2.5 text-white shadow-md hover:bg-indigo-700 hover:shadow-lg`;
+
+const btnOutline = `${btnBase} border border-gray-300 bg-white/60 px-4 py-2.5 text-gray-700 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300`;
+
+const btnOutlineHero = `${btnBase} border border-gray-300 bg-white px-5 py-2.5 text-gray-700 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-500 dark:hover:text-indigo-400`;
+
+/** Small inline arrow used by primary CTAs (aligned with button text). */
+const ArrowIcon = ({ className = 'h-3.5 w-3.5' }: { className?: string }) => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+        aria-hidden="true"
+    >
+        <path d="M5 12h14m-7-7 7 7-7 7" />
+    </svg>
+);
+
+const HamburgerIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="h-5 w-5"
+        aria-hidden="true"
+    >
+        <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+);
+
+const CloseIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="h-5 w-5"
+        aria-hidden="true"
+    >
+        <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+);
 
 export default function Welcome({
     auth,
 }: PageProps<Record<string, never>>) {
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    // Close the mobile menu with Escape (focus may be anywhere in the panel).
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setMenuOpen(false);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [menuOpen]);
+
     return (
         <>
             <Head title="Welcome" />
-            <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 text-gray-900 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950/40 dark:text-white">
-                {/* Background glow orbs + SVG grid */}
+            <div className="relative flex min-h-screen flex-col overflow-x-clip bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 text-gray-900 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950/40 dark:text-white">
+                {/* Background glow orbs + SVG grid (own overflow-hidden layer so
+                    the decorative shapes never cause horizontal scroll) */}
                 <div
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -55,76 +133,104 @@ export default function Welcome({
                     }
                 `}</style>
 
-                <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6">
-                    {/* Header */}
-                    <header className="flex items-center justify-between py-8">
+                {/* ── Header: sticky, single row, collapses to hamburger < md ── */}
+                <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/80 backdrop-blur dark:border-gray-800/60 dark:bg-gray-950/80">
+                    <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6">
+                        {/* Logo + title */}
                         <Link
                             href="/"
-                            className="flex items-center gap-3 transition-opacity hover:opacity-80"
+                            onClick={() => setMenuOpen(false)}
+                            className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-80 sm:gap-3"
                         >
                             <img
                                 src="/logos/logo1.png"
                                 alt="SBC"
-                                className="h-10 w-10 rounded-lg object-contain"
+                                className="h-8 w-8 shrink-0 rounded-lg object-contain sm:h-10 sm:w-10"
                             />
-                            <span className="text-lg font-bold tracking-tight">
+                            <span className="truncate text-[18px] font-bold tracking-tight">
                                 SBC Guest Portal
                             </span>
                         </Link>
-                        <nav className="flex items-center gap-3">
+
+                        {/* Desktop navigation */}
+                        <nav className="hidden items-center gap-2.5 md:flex">
                             {auth.user ? (
-                                <Link
-                                    href={route('dashboard')}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
-                                >
+                                <Link href={route('dashboard')} className={btnFilled}>
                                     Dashboard
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="h-3.5 w-3.5"
-                                        aria-hidden="true"
-                                    >
-                                        <path d="M5 12h14m-7-7 7 7-7 7" />
-                                    </svg>
+                                    <ArrowIcon />
                                 </Link>
                             ) : (
                                 <>
-                                    <Link
-                                        href={route('login')}
-                                        className="rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-gray-300 dark:hover:text-indigo-400"
-                                    >
+                                    <Link href={route('login')} className={btnOutline}>
                                         Sign in
                                     </Link>
-                                    <Link
-                                        href={route('register')}
-                                        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
-                                    >
+                                    <Link href={route('register')} className={btnFilled}>
                                         Get started
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2.5"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="h-3.5 w-3.5"
-                                            aria-hidden="true"
-                                        >
-                                            <path d="M5 12h14m-7-7 7 7-7 7" />
-                                        </svg>
+                                        <ArrowIcon />
                                     </Link>
                                 </>
                             )}
                         </nav>
-                    </header>
 
+                        {/* Mobile hamburger */}
+                        <button
+                            type="button"
+                            onClick={() => setMenuOpen((o) => !o)}
+                            aria-expanded={menuOpen}
+                            aria-controls="welcome-mobile-nav"
+                            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white/60 text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:hover:border-indigo-500 dark:hover:text-indigo-300 dark:focus-visible:ring-offset-gray-950 md:hidden"
+                        >
+                            {menuOpen ? <CloseIcon /> : <HamburgerIcon />}
+                        </button>
+                    </div>
+
+                    {/* Mobile menu panel */}
+                    {menuOpen && (
+                        <nav
+                            id="welcome-mobile-nav"
+                            aria-label="Mobile navigation"
+                            className="border-t border-gray-200/60 bg-white/95 px-4 py-3 backdrop-blur dark:border-gray-800/60 dark:bg-gray-950/95 md:hidden"
+                        >
+                            <div className="flex flex-col gap-2">
+                                {auth.user ? (
+                                    <Link
+                                        href={route('dashboard')}
+                                        onClick={() => setMenuOpen(false)}
+                                        className={`${btnFilled} w-full`}
+                                    >
+                                        Dashboard
+                                        <ArrowIcon />
+                                    </Link>
+                                ) : (
+                                    <>
+                                        <Link
+                                            href={route('register')}
+                                            onClick={() => setMenuOpen(false)}
+                                            className={`${btnFilled} w-full`}
+                                        >
+                                            Get started
+                                            <ArrowIcon />
+                                        </Link>
+                                        <Link
+                                            href={route('login')}
+                                            onClick={() => setMenuOpen(false)}
+                                            className={`${btnOutline} w-full`}
+                                        >
+                                            Sign in
+                                        </Link>
+                                    </>
+                                )}
+                            </div>
+                        </nav>
+                    )}
+                </header>
+
+                {/* ── Content ── */}
+                <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 sm:px-6">
                     {/* Hero */}
                     <main className="flex flex-1 items-center">
-                        <div className="grid w-full grid-cols-1 items-center gap-16 py-12 lg:grid-cols-2">
+                        <div className="grid w-full grid-cols-1 items-center gap-10 py-10 lg:grid-cols-2 lg:gap-16 lg:py-12">
                             {/* Left column */}
                             <div className="space-y-8">
                                 <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50/80 px-3 py-1 text-xs font-medium text-indigo-700 backdrop-blur dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
@@ -132,7 +238,7 @@ export default function Welcome({
                                     Impact Cell · Follow-up · Integration
                                 </div>
 
-                                <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+                                <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
                                     The Complete Guest &,{' '}
                                     <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 bg-clip-text text-transparent dark:from-indigo-400 dark:via-violet-400 dark:to-indigo-400">
                                         Impact Cell Management
@@ -140,7 +246,7 @@ export default function Welcome({
                                     Platform.
                                 </h1>
 
-                                <p className="max-w-xl text-lg leading-relaxed text-gray-600 dark:text-gray-400">
+                                <p className="max-w-xl text-base leading-relaxed text-gray-600 dark:text-gray-400 sm:text-lg">
                                     Manage guests, coordinate Impact Cells, 
                                     oversee Follow-Up Officers and Teams,
                                     and ensure every interaction is tracked —
@@ -152,45 +258,23 @@ export default function Welcome({
                                     {auth.user ? (
                                         <Link
                                             href={route('dashboard')}
-                                            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-indigo-700 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+                                            className={btnFilledHero}
                                         >
                                             Open dashboard
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2.5"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                className="h-4 w-4"
-                                                aria-hidden="true"
-                                            >
-                                                <path d="M5 12h14m-7-7 7 7-7 7" />
-                                            </svg>
+                                            <ArrowIcon className="h-4 w-4" />
                                         </Link>
                                     ) : (
                                         <>
                                             <Link
                                                 href={route('register')}
-                                                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-indigo-700 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+                                                className={btnFilledHero}
                                             >
                                                 Get started free
-                                                <svg
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2.5"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    className="h-4 w-4"
-                                                    aria-hidden="true"
-                                                >
-                                                    <path d="M5 12h14m-7-7 7 7-7 7" />
-                                                </svg>
+                                                <ArrowIcon className="h-4 w-4" />
                                             </Link>
                                             <Link
                                                 href={route('login')}
-                                                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:border-indigo-300 hover:text-indigo-600 hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-500 dark:hover:text-indigo-400 dark:focus-visible:ring-offset-gray-900"
+                                                className={btnOutlineHero}
                                             >
                                                 Sign in instead
                                             </Link>
@@ -199,7 +283,7 @@ export default function Welcome({
                                 </div>
 
                                 {/* Trust strip */}
-                                <dl className="flex flex-wrap items-center gap-x-8 gap-y-4 pt-2 text-sm text-gray-600 dark:text-gray-400">
+                                <dl className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-2 text-sm text-gray-600 dark:text-gray-400 sm:gap-x-8">
                                     <div className="flex items-center gap-2">
                                         <svg
                                             viewBox="0 0 20 20"

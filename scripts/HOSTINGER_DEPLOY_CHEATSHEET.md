@@ -2,6 +2,54 @@
 
 > One-page reference for `bash scripts/deploy_to_hostinger.sh` — the v2 Laravel-native deploy sequence per `Implementation/Phase_12_Deployment.md`. **NOT** the v1 Node/Passenger narrative — that's retired.
 
+## 🚀 RUN AFTER EVERY `git pull` — production command block (verified 2026-08-03)
+
+> Use this when updating the deployed code via `git pull` (the everyday flow).
+> Key facts about this box: plain `php`/`npm` do **NOT** resolve in the SSH shell —
+> you must use the full alt-php84 path and export the alt-nodejs22 PATH. The two
+> seeders below are `firstOrCreate`-idempotent, so re-running them on every pull
+> is safe and prevents the `/register` 503 (missing roles) and empty cell-dropdown
+> incidents from ever recurring.
+
+```bash
+# 1. SSH in
+ssh u188660189@ssh.hostinger.com
+
+# 2. Project root — the folder where composer.json lives (run `pwd` to confirm)
+cd /home/u188660189/domains/app.summitdata.one/public_html
+
+# 3. Full-path binaries
+PHP=/opt/alt/php84/usr/bin/php
+export PATH=/opt/alt/alt-nodejs22/root/bin:$PATH
+
+# 4. Pull the update branch
+git pull origin update
+
+# 5. Composer + frontend build (skip npm if no JS/React changes in the pull)
+$PHP /opt/alt/php84/usr/bin/composer install --optimize-autoloader --no-dev --no-interaction --prefer-dist
+npm ci --no-audit --no-fund && npm run build
+
+# 6. Migrate + idempotent seeders (both safe to re-run)
+$PHP artisan migrate --force --no-interaction
+$PHP artisan db:seed --class=RolesAndPermissionsSeeder --force
+$PHP artisan db:seed --class=ImpactCellSeeder --force
+
+# 7. Cache trio + storage link (RE-RUN after any .env change too!)
+$PHP artisan config:cache && $PHP artisan route:cache && $PHP artisan view:cache && $PHP artisan storage:link
+
+# 8. Permissions
+chmod -R 775 storage bootstrap/cache && chown -R u188660189:www-data storage bootstrap/cache
+
+# 9. Verify
+curl -s -o /dev/null -w 'home: %{http_code}\n' https://app.summitdata.one/
+curl -s -o /dev/null -w 'register: %{http_code}\n' https://app.summitdata.one/register
+#    Expect 200 for both. Hard-refresh the browser (Ctrl-Shift-R) after.
+```
+
+**Maintenance-mode tip:** if you ever run `$PHP artisan down` before a deploy, the
+block above does NOT re-enable the app — run `$PHP artisan up` as the very last
+step (the app was found stuck in maintenance once already; `up` must always run).
+
 ## Stack reference (reminder)
 
 ```
@@ -15,6 +63,10 @@ Browser (HTTPS) → Cloudflare/Hostinger → Apache → DocumentRoot: public_htm
 ```
 
 ## The 7 critical Hostinger-side commands (deploy order)
+
+> ⚠️ This block is the **rsync full-deploy variant** (`deploy_to_hostinger.sh`).
+> For the everyday **`git pull`** flow use the command block at the top of this
+> page — it uses the full php84 path that this box requires.
 
 ```bash
 # 1. SSH into Hostinger (loads PATH=/opt/alt/alt-nodejs22/root/bin if using v1 Node; v2 doesn't need it)

@@ -291,35 +291,35 @@ export default function Register({
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                             Choose one or more. You can switch between dashboards after login (e.g. volunteer + officer).
                         </p>
-                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3" data-testid="register-roles-grid">
+                        <div className="flex flex-wrap gap-2.5" data-testid="register-roles-grid">
                             {rolesForSignup.map((role) => {
                                 const checked = data.roles.includes(role);
-                                // Phase-13 follow-up (user choice): both role-caption lines under
-                                // Impact_Leaders (the outreach-cell note) AND Impact_Zonal_Coordinator
-                                // (the zone-assignment-by-admin note) are absent. The role-checkbox card
-                                // itself fills the description area uniformly for both surfaced roles.
-                                //
-                                // Phase-14 forward-compat slot: if captions return, re-introduce a
-                                // per-role description map and a conditional `<span>` here — match the
-                                // ml-6 indent + text-xs typography from the earlier Phase-13 commit.
+                                // Auto-sized role cards (2026-08-03): cards are `inline-flex` and grow
+                                // with their label (min-w 180px, max-w-full) instead of being squeezed
+                                // into a fixed 3-column grid — long names like Impact_Zonal_Coordinator
+                                // previously overflowed the border. The label shown is the human-friendly
+                                // form ("Impact Zonal Coordinator"); the checkbox value stays the
+                                // canonical snake_case role name, so the wire + server validation are
+                                // untouched. No caption lines today; if captions return, re-introduce a
+                                // per-role description map below the checkbox row.
                                 return (
                                     <label
                                         key={role}
-                                        className={`flex cursor-pointer flex-col gap-0.5 rounded-md border px-3 py-2 text-sm transition-colors ${
+                                        className={`inline-flex cursor-pointer items-center gap-2.5 rounded-xl border px-[18px] py-[14px] text-sm transition-colors min-w-[180px] max-w-full shrink-0 whitespace-normal sm:whitespace-nowrap ${
                                             checked
                                                 ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-700/50 dark:bg-indigo-900/30'
-                                                : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
+                                                : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
                                         }`}
                                         data-testid={`register-role-${role}`}
                                     >
-                                        <span className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={checked}
-                                                onChange={() => toggleRole(role)}
-                                                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900"
-                                            />
-                                            <span className="font-medium text-gray-900 dark:text-gray-100">{role}</span>
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleRole(role)}
+                                            className="h-4 w-4 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900"
+                                        />
+                                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                                            {friendlyRoleName(role)}
                                         </span>
                                     </label>
                                 );
@@ -457,9 +457,9 @@ export default function Register({
                         >
                             <p className="text-xs text-gray-500 dark:text-gray-400">
                                 <span className="font-medium text-gray-700 dark:text-gray-200">Cell &amp; leadership-team setup</span>{' '}
-                                appears here once you tick the <span className="font-mono">Impact_Leaders</span> role above. Hidden for other roles —
+                                appears here once you tick the <span className="font-medium text-gray-700 dark:text-gray-200">Impact Leaders</span> role above. Hidden for other roles —
                                 an{' '}
-                                <span className="font-mono">Impact_Zonal_Coordinator</span> signup is cell-less at this step (Admin assigns your zone later).
+                                <span className="font-medium text-gray-700 dark:text-gray-200">Impact Zonal Coordinator</span> signup is cell-less at this step (Admin assigns your zone later).
                             </p>
                             {/* 2026-08-03: server errors on the hidden cell fields were
                                 invisible (their InputErrors live inside the unrendered
@@ -533,6 +533,29 @@ const HIDDEN_CELL_FIELDS = [
  * falls through to per-index keys. Returns `undefined` if no match —
  * `<InputError>` already treats `undefined` as "no message".
  */
+/**
+ * 2026-08-03 — human-friendly role label for the signup cards.
+ *
+ * Role names are canonical snake_case on the wire (Impact_Zonal_Coordinator)
+ * and must stay that way in `value`/checkbox payloads, but the UI shows a
+ * readable label ("Impact Zonal Coordinator"). Handles snake_case AND
+ * camelCase boundaries + repeated underscores, so it stays correct for
+ * every role in RoleHelper::ROLE_NAMES / SIGNUP_VISIBLE_ROLES without
+ * a hardcoded lookup table.
+ *
+ *   Impact_Zonal_Coordinator -> Impact Zonal Coordinator
+ *   Impact_Leaders           -> Impact Leaders
+ *   FollowUpOfficer          -> Follow Up Officer
+ *   Follow_UP_Admin          -> Follow UP Admin
+ */
+function friendlyRoleName(role: string): string {
+    return role
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2') // camelCase boundary -> space
+        .replace(/_+/g, ' ') // underscores -> spaces
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function errorsForArr(errors: Record<string, string>, field: string): string | undefined {
     if (errors[field]) return errors[field];
     for (let i = 0; i < 32; i++) {
