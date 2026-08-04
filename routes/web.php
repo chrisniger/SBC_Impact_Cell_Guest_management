@@ -100,7 +100,7 @@ Route::middleware('auth')->group(function () {
     // Phase 34 — real Roles & Permissions admin UI (replaces the Phase 06d.0
     // "Coming soon" stub). Listing stays behind gate.stubs (production-hidden
     // per design decision); write endpoints stay available for provisioning.
-    Route::get   ('/admin/roles-permissions',              [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'index'])->name('admin.roles-permissions.index')->middleware('gate.stubs');
+    Route::get   ('/admin/roles-permissions',              [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'index'])->name('admin.roles-permissions.index');
     Route::post  ('/admin/roles-permissions',              [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'store'])->name('admin.roles-permissions.store');
     Route::put   ('/admin/roles-permissions/{role}',       [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'update'])->name('admin.roles-permissions.update');
     Route::delete('/admin/roles-permissions/{role}',       [\App\Http\Controllers\Admin\RolesPermissionsController::class, 'destroy'])->name('admin.roles-permissions.destroy');
@@ -108,14 +108,14 @@ Route::middleware('auth')->group(function () {
     // Phase 34 — real in-app announcement board (replaces the Phase 06d.0
     // "Coming soon" stub). Listing stays behind gate.stubs (production-hidden
     // per design decision); writes stay available for provisioning.
-    Route::get   ('/admin/messages',                  [\App\Http\Controllers\Admin\MessagesController::class, 'index'])->name('admin.messages.index')->middleware('gate.stubs');
+    Route::get   ('/admin/messages',                  [\App\Http\Controllers\Admin\MessagesController::class, 'index'])->name('admin.messages.index');
     Route::post  ('/admin/messages',                  [\App\Http\Controllers\Admin\MessagesController::class, 'store'])->name('admin.messages.store');
     Route::delete('/admin/messages/{announcement}',   [\App\Http\Controllers\Admin\MessagesController::class, 'destroy'])->name('admin.messages.destroy');
     // Phase 34 — real Analytics page (replaces the Phase 06d.0 "Coming soon"
     // stub). Reuses the shared AnalyticsService chart math + the existing
     // OverviewAnalytics / DateRangeFilter / KPICard / SystemOverviewPanel
     // components. Listing stays behind gate.stubs (production-hidden).
-    Route::get('/admin/analytics',                [\App\Http\Controllers\Admin\AnalyticsController::class, 'index'])->name('admin.analytics.index')->middleware('gate.stubs');
+    Route::get('/admin/analytics',                [\App\Http\Controllers\Admin\AnalyticsController::class, 'index'])->name('admin.analytics.index');
 
     // Phase 06e+1 — Admin/Users real CRUD (was a Phase 06d.0 stub).
     // Administrator-only via UserPolicy (auto-discovered). The inline
@@ -135,13 +135,13 @@ Route::middleware('auth')->group(function () {
     // — they live in admin space and are intentionally disabled in
     // production until Phase 06e+4 ships the full migration of the
     // User CRUD into the production admin chrome.
-    Route::get   ('/admin/users',                  [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('admin.users.index')->middleware('gate.stubs');
+    Route::get   ('/admin/users',                  [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('admin.users.index');
     Route::post  ('/admin/users',                  [\App\Http\Controllers\Admin\UserController::class, 'store'])->name('admin.users.store');
-    Route::get   ('/admin/users/{user}/edit',      [\App\Http\Controllers\Admin\UserController::class, 'edit'])->name('admin.users.edit')->middleware('gate.stubs');
-    Route::put   ('/admin/users/{user}',           [\App\Http\Controllers\Admin\UserController::class, 'update'])->name('admin.users.update')->middleware('gate.stubs');
+    Route::get   ('/admin/users/{user}/edit',      [\App\Http\Controllers\Admin\UserController::class, 'edit'])->name('admin.users.edit');
+    Route::put   ('/admin/users/{user}',           [\App\Http\Controllers\Admin\UserController::class, 'update'])->name('admin.users.update');
     Route::patch ('/admin/users/{user}/role',      [\App\Http\Controllers\Admin\UserController::class, 'updateRole'])->name('admin.users.update-role');
     Route::patch ('/admin/users/{user}/zonal-cells', [\App\Http\Controllers\Admin\UserController::class, 'updateZonalCells'])->name('admin.users.update-zonal-cells');
-    Route::patch ('/admin/users/{user}/restore',   [\App\Http\Controllers\Admin\UserController::class, 'restore'])->name('admin.users.restore')->middleware('gate.stubs');
+    Route::patch ('/admin/users/{user}/restore',   [\App\Http\Controllers\Admin\UserController::class, 'restore'])->name('admin.users.restore');
     Route::delete('/admin/users/{user}',           [\App\Http\Controllers\Admin\UserController::class, 'destroy'])->name('admin.users.destroy');
 
     // Phase 09 — Notification settings (Admin only).

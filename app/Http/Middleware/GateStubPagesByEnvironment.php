@@ -43,13 +43,14 @@ class GateStubPagesByEnvironment
      * Route names whose Inertia pages must NOT render in production.
      * Single source of truth — update + add the route-level middleware
      * via `->middleware('gate.stubs')` in routes/web.php for every entry.
+     *
+     * Phase 06e+1 + Phase 34 — all 4 previously-gated stub pages
+     * (admin.users.index, admin.roles-permissions.index, admin.messages.index,
+     * admin.analytics.index) are now real shipped pages and were removed
+     * from this list. Keeping the const + middleware infrastructure intact
+     * so future stubs can be gated with a single-line edit.
      */
-    private const GATED_ROUTES = [
-        'admin.users.index',
-        'admin.roles-permissions.index',
-        'admin.messages.index',
-        'admin.analytics.index',
-    ];
+    private const GATED_ROUTES = [];
 
     /**
      * Environments where stubs are still reachable.
