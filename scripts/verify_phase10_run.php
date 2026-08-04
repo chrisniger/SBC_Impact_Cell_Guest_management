@@ -254,7 +254,7 @@ check(17, 'Import.tsx has data-testid="csv-drop-zone" + "csv-file-input" + "csv-
 check(18, 'Import.tsx uses AdminDashboardLayout + useRef<HTMLInputElement>(null) + fetch(\'/csv/import\', { method: \'POST\', body: formData })',
     str_contains($pagesSrc, "import AdminDashboardLayout from '@/Layouts/AdminDashboardLayout'")
     && str_contains($pagesSrc, 'useRef<HTMLInputElement>(null)')
-    && preg_match("/fetch\\s*\\(\\s*['\"]\\/csv\\/import['\"]\\s*,\\s*\\{\\s*method\\s*:\\s*['\"]POST['\"]\\s*,\\s*body\\s*:\\s*formData\\s*\\}\\s*\\)/", $pagesSrc) === 1,
+    && preg_match("/fetch\\s*\\(\\s*['\"]\\/csv\\/import['\"]\\s*,\\s*\\{\\s*method\\s*:\\s*['\"]POST['\"]\\s*,\\s*body\\s*:\\s*formData(?:\\s*,\\s*[^}]*)?\\s*\\}\\s*\\)/", $pagesSrc) === 1,
     'must layer under AdminDashboardLayout + manage file input ref + POST formData to /csv/import'
 );
 

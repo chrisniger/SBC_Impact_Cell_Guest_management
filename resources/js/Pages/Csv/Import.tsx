@@ -18,6 +18,52 @@ const fileIconPath = (
     </>
 );
 
+const downloadIconPath = (
+    <>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+    </>
+);
+
+const exportIconPath = (
+    <>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+    </>
+);
+
+// Phase 10e — 'Import to test' button glyph (play inside a circle).
+const testImportIconPath = (
+    <>
+        <circle cx="12" cy="12" r="10" />
+        <polygon points="10 8 16 12 10 16 10 8" />
+    </>
+);
+
+// Phase 10d — one per-template export link. Mirrors the sample grid above:
+// each export streams ALL guests using the SAME canonical columns as the
+// matching import sample, so a saved export re-imports cleanly with that
+// template. The server (CsvExportController::export?template=) is admin-only
+// for template exports (the column sets include group-owned fields).
+const csvExports = [
+    { key: 'default', label: 'Default', description: 'Base fields only (guest_name, phone, email, event, source)' },
+    { key: 'officer', label: 'Officer', description: 'contacted_status + visited' },
+    { key: 'team',    label: 'Team',    description: 'follow_up_status + follow_up_contacts' },
+    { key: 'impact',  label: 'Impact',  description: 'impact_status + nearest_impact_cell_id' },
+];
+
+// Phase 10c — one sample download per existing CSV import template. The
+// server (CsvImportController::sample) streams a header row + one example
+// row using canonical column names, so a saved sample re-imports as-is.
+const csvSamples = [
+    { key: 'default', label: 'Default',    description: 'Base fields (guest_name, phone, email, event, source)' },
+    { key: 'officer', label: 'Officer',    description: 'Adds contacted_status + visited' },
+    { key: 'team',    label: 'Team',       description: 'Adds follow_up_status + follow_up_contacts' },
+    { key: 'impact',  label: 'Impact',     description: 'Adds impact_status + nearest_impact_cell_id' },
+];
+
 export default function CsvImport() {
     const [file, setFile] = useState<File | null>(null);
     const [template, setTemplate] = useState<string>('');
@@ -25,21 +71,57 @@ export default function CsvImport() {
     const [loading, setLoading] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const handleUpload = async () => {
-        if (!file) return;
+    // Phase 10c — the raw fetch must carry the CSRF token itself (axios would
+    // inject X-XSRF-TOKEN automatically, but fetch does not). Laravel's
+    // XSRF-TOKEN cookie is readable (not httpOnly) for exactly this purpose.
+    const csrfHeader = (): Record<string, string> => {
+        const match = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/);
+        return match ? { 'X-XSRF-TOKEN': decodeURIComponent(match[1]) } : {};
+    };
+
+    const submitCsv = async (csvFile: File, tpl: string) => {
         setLoading(true);
         setResult(null);
         const formData = new FormData();
-        formData.append('csv', file);
-        if (template) formData.append('template', template);
+        formData.append('csv', csvFile);
+        if (tpl) formData.append('template', tpl);
         try {
-            const res = await fetch('/csv/import', { method: 'POST', body: formData });
+            const res = await fetch('/csv/import', { method: 'POST', body: formData, headers: csrfHeader() });
             const json = await res.json();
             setResult(json);
         } catch {
             setResult({ created: 0, skipped: 0, errors: ['Upload failed.'] });
         }
         setLoading(false);
+    };
+
+    const handleUpload = async () => {
+        if (!file) return;
+        await submitCsv(file, template);
+    };
+
+    // Phase 10e — 'Import to test': fetch the sample for a template, wrap it
+    // in a File, and push it through the exact same import pipeline so admins
+    // can preview the flow without preparing a file. The example row's phone
+    // is randomized so repeated test imports always show Created: 1 instead
+    // of tripping the duplicate-by-phone skip.
+    const handleSampleImport = async (key: string) => {
+        if (loading) return;
+        const tpl = key === 'default' ? '' : key;
+        try {
+            const res = await fetch(route('csv.sample', key === 'default' ? '' : key));
+            if (!res.ok) throw new Error('sample fetch failed');
+            let csvText = await res.text();
+            // Sample phone is 11 digits (08 + 9 more); swap it for a fresh one
+            // so repeat test imports never collide on the duplicate-by-phone rule.
+            csvText = csvText.replace(/08\d{9}/, '08' + Math.floor(100000000 + Math.random() * 899999999));
+            const sampleFile = new File([csvText], `sample-${key}.csv`, { type: 'text/csv' });
+            setTemplate(tpl);
+            setFile(sampleFile);
+            await submitCsv(sampleFile, tpl);
+        } catch {
+            setResult({ created: 0, skipped: 0, errors: ['Sample import failed.'] });
+        }
     };
 
     return (
@@ -155,6 +237,100 @@ export default function CsvImport() {
                                 </button>
                             </div>
                         )}
+                    </div>
+                </section>
+
+                <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800" data-testid="card-csv-exports">
+                    <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                                {exportIconPath}
+                            </svg>
+                        </span>
+                        <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">Export CSV</h3>
+                    </header>
+                    <div className="p-6">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Download all guests as a CSV using the same column set as each import template — headers match the samples, so an exported file can be edited and re-imported as-is.
+                        </p>
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            {csvExports.map((s) => (
+                                <a
+                                    key={s.key}
+                                    href={route('csv.export', { template: s.key })}
+                                    download
+                                    data-testid={`csv-export-${s.key}`}
+                                    className="group flex flex-col items-start gap-2 rounded-xl border border-gray-200 bg-gray-50/50 p-4 transition-all duration-200 hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-card-hover dark:border-gray-700 dark:bg-gray-800/60 dark:hover:border-blue-600 dark:hover:bg-blue-900/20"
+                                >
+                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition-transform group-hover:scale-110 dark:bg-blue-900/40 dark:text-blue-300" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                                            {exportIconPath}
+                                        </svg>
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                                        {s.label}
+                                    </span>
+                                    <span className="text-xs leading-snug text-gray-500 dark:text-gray-400">
+                                        {s.description}
+                                    </span>
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <section className="motion-safe:animate-fade-in overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card dark:border-gray-700 dark:bg-gray-800" data-testid="card-csv-samples">
+                    <header className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900/40">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                                {downloadIconPath}
+                            </svg>
+                        </span>
+                        <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">Download CSV Samples</h3>
+                    </header>
+                    <div className="p-6">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Grab a ready-made sample file for each import template — headers are pre-filled with one example row. Save it, replace the example with your guests, then upload above — or hit <span className="font-semibold text-indigo-600 dark:text-indigo-400">Import to test</span> to run a sample through the importer right now.
+                        </p>
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            {csvSamples.map((s) => (
+                                <div
+                                    key={s.key}
+                                    className="group flex flex-col rounded-xl border border-gray-200 bg-gray-50/50 p-4 transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50/40 hover:shadow-card-hover dark:border-gray-700 dark:bg-gray-800/60 dark:hover:border-indigo-600 dark:hover:bg-indigo-900/20"
+                                >
+                                    <a
+                                        href={route('csv.sample', s.key === 'default' ? '' : s.key)}
+                                        download
+                                        data-testid={`csv-sample-${s.key}`}
+                                        className="flex flex-col items-start gap-2"
+                                    >
+                                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition-transform group-hover:scale-110 dark:bg-emerald-900/40 dark:text-emerald-300" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                                                {downloadIconPath}
+                                            </svg>
+                                        </span>
+                                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                                            {s.label}
+                                        </span>
+                                        <span className="text-xs leading-snug text-gray-500 dark:text-gray-400">
+                                            {s.description}
+                                        </span>
+                                    </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSampleImport(s.key)}
+                                        disabled={loading}
+                                        className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/70"
+                                        data-testid={`csv-sample-test-${s.key}`}
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                                            {testImportIconPath}
+                                        </svg>
+                                        Import to test
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </section>
 

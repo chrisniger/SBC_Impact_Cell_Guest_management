@@ -87,7 +87,7 @@ class AdminSettingsTest extends TestCase
     {
         $admin = $this->makeUserWithRole('Administrator');
         $envPath = Config::get('settings.env_path');
-        file_put_contents($envPath, "APP_NAME=\"Impact Cell | Guest Portal\"\nMAIL_MAILER=log\nMAIL_PASSWORD=oldsecret\n");
+        file_put_contents($envPath, "APP_NAME=\"SBC Portal\"\nMAIL_MAILER=log\nMAIL_PASSWORD=oldsecret\n");
 
         $response = $this->actingAs($admin)->post(route('admin.settings.smtp.store'), [
             'mailer'       => 'smtp',

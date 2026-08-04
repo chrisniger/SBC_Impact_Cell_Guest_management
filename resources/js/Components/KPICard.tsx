@@ -29,6 +29,35 @@ type Props = PropsWithChildren<{
     sparkTone?: 'default' | 'indigo' | 'emerald' | 'amber' | 'rose' | 'blue';
     /** Phase 06d.0 — render the big number with requestAnimationFrame easeOutQuad */
     animateValue?: boolean;
+    /**
+     * 2026-08-04 — optional click handler. When provided the card renders as
+     * an interactive element (cursor-pointer + role=button + Enter/Space
+     * keyboard activation) so a KPI can open a detail surface (e.g. the
+     * leader's assigned-guests list). Backward compatible — absent by default.
+     */
+    onClick?: () => void;
+    /**
+     * 2026-08-04 — optional Lucide/Heroicons-style inline SVG content (24x24
+     * stroke paths; the wrapper svg supplies viewBox + stroke props). Rendered
+     * in a small accent-tinted chip beside the caption so each KPI reads at a
+     * glance. Purely decorative (aria-hidden) — absent by default.
+     */
+    icon?: ReactNode;
+    /**
+     * 2026-08-04 — optional action helper text for clickable cards (e.g.
+     * "View pending guests"). Rendered in the trend slot in an action color
+     * so the card reads as a navigable surface. Only meaningful alongside
+     * `onClick`; absent by default.
+     */
+    clickHint?: string;
+    /**
+     * 2026-08-04 — optional Escape-key handler for clickable cards. Called
+     * when the card has keyboard focus and the user presses Escape (e.g. to
+     * dismiss a surface the card opened). The modal it opens also closes on
+     * Escape via HeadlessUI; this covers the card itself so the Escape
+     * contract holds whether focus is on the card or inside the dialog.
+     */
+    onEscape?: () => void;
 }>;
 
 /**
@@ -95,16 +124,65 @@ export default function KPICard({
     series,
     sparkTone,
     animateValue = false,
+    onClick,
+    icon,
+    clickHint,
+    onEscape,
 }: Props) {
     const positiveIsGood = delta?.positiveIsGood ?? true;
     const isPositive = (delta?.value ?? 0) >= 0;
     const tone = isPositive === positiveIsGood ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
 
+    // 2026-08-04 — optional icon-chip tints, matched to each accent so the
+    // chip reads as part of the card's color language (mirrors the
+    // quick-submit tile accentBg pattern in Dashboard.tsx).
+    const iconChipClasses: Record<NonNullable<Props['accent']>, string> = {
+        default: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+        indigo:  'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300',
+        emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300',
+        amber:   'bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300',
+        rose:    'bg-rose-50 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
+        blue:    'bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
+    };
+    // Clickable = interactive (onClick) OR an action hint is supplied — a
+    // clickHint with no onClick would otherwise render a broken indigo
+    // affordance on a non-interactive card.
+    const isClickable = Boolean(onClick || clickHint);
+    // 2026-08-04 — clickable cards get a stronger affordance on hover: a
+    // slight lift, indigo border + ring highlight, and the `group` class so
+    // the arrow chip tints indigo too. Informational cards keep the neutral
+    // gray hover (preserved from Phase 13).
+    const hoverCls = isClickable
+        ? 'hover:-translate-y-0.5 hover:border-indigo-300 hover:ring-indigo-200/70 dark:hover:border-indigo-500 dark:hover:ring-indigo-700/50'
+        : 'hover:border-gray-300 hover:ring-gray-200/80 dark:hover:border-gray-600 dark:hover:ring-gray-700/60';
+
     return (
         <div
             data-card
             data-testid={`kpi-${caption.toLowerCase().replace(/\s+/g, '-')}`}
-            className={`motion-safe:animate-fade-in relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card transition-all duration-200 hover:border-gray-300 hover:shadow-card-hover hover:ring-1 hover:ring-gray-200/80 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:ring-gray-700/60 ${className}`}
+            onClick={onClick}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            onKeyDown={isClickable ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onClick?.();
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    onEscape?.();
+                }
+            } : undefined}
+            aria-label={isClickable ? (clickHint ? `${caption} — ${clickHint}` : caption) : undefined}
+            className={`motion-safe:animate-fade-in relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card transition-all duration-200 hover:shadow-card-hover ${hoverCls} dark:border-gray-700 dark:bg-gray-800 ${className} ${
+                isClickable
+                    // 2026-08-04 — keyboard a11y: a FocusVisible ring only when
+                    // navigating by keyboard (focus-visible), never on mouse
+                    // click. `focus:outline-none` suppresses the UA outline so
+                    // the custom ring is the single focus signal.
+                    ? 'group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800'
+                    : ''
+            }`}
         >
             {accent !== 'default' && (
                 <span
@@ -113,11 +191,35 @@ export default function KPICard({
                 />
             )}
             <div className="px-5 py-4">
-                <div className="flex items-center justify-between">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">
-                        {caption}
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                        {icon && (
+                            <span
+                                aria-hidden="true"
+                                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${iconChipClasses[accent]}`}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                                    {icon}
+                                </svg>
+                            </span>
+                        )}
+                        <div className="truncate text-[11px] font-medium uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">
+                            {caption}
+                        </div>
                     </div>
-                    {delta && (
+                    {isClickable ? (
+                        /* 2026-08-04 — subtle click affordance: a small
+                           arrow-up-right chip that tints indigo on card hover. */
+                        <span
+                            aria-hidden="true"
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400 transition-colors duration-200 group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:bg-gray-800/80 dark:text-gray-500 dark:group-hover:bg-indigo-900/40 dark:group-hover:text-indigo-300"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                                <line x1="7" y1="17" x2="17" y2="7" />
+                                <polyline points="7 7 17 7 17 17" />
+                            </svg>
+                        </span>
+                    ) : delta ? (
                         <span
                             className={`inline-flex items-center gap-0.5 rounded-full bg-gray-50 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums ${tone} dark:bg-gray-900/40`}
                             data-testid={`kpi-delta-${caption.toLowerCase().replace(/\s+/g, '-')}`}
@@ -125,7 +227,7 @@ export default function KPICard({
                             <span aria-hidden="true">{isPositive ? '▲' : '▼'}</span>
                             {Math.abs(delta.value).toFixed(1)}%
                         </span>
-                    )}
+                    ) : null}
                 </div>
                 <div className={`mt-1 text-[30px] font-semibold leading-none tabular-nums tracking-tight ${accentClasses[accent]}`}>
                     {animateValue && typeof value === 'number' ? (
@@ -134,11 +236,15 @@ export default function KPICard({
                         value
                     )}
                 </div>
-                {trend && (
+                {clickHint ? (
+                    <div className="mt-2 text-[11.5px] font-medium leading-snug text-indigo-600 dark:text-indigo-400">
+                        {clickHint}
+                    </div>
+                ) : trend ? (
                     <div className="mt-2 text-[11.5px] leading-snug text-gray-500 dark:text-gray-400">
                         {trend}
                     </div>
-                )}
+                ) : null}
                 {children && <div className="mt-3">{children}</div>}
             </div>
             {/* Phase 06d.0 — inline sparkline clipped flush to bottom edge so it reads as a built-in mini-chart. width=220 height=28 fills the typical KPI card width without measuring — viewBox scales the line, so the SVG preserves ratio on any card width. */}

@@ -24,12 +24,19 @@ type LeadershipPageProps = {
  */
 export default function LeadershipIndex({ boards, activeRole }: LeadershipPageProps) {
     const boardCount = boards.length;
-    const heading = boardCount === 0
+
+    // 2026-08-04 — the Impact_Leaders dashboard no longer renders its inline
+    // Leadership Board card; this page is now the single home for that
+    // content, so leaders get the familiar "Your leadership tree" heading
+    // that used to sit on the dashboard.
+    const isLeader = activeRole === 'Impact_Leaders';
+    const heading = isLeader
+        ? 'Your leadership tree'
+        : boardCount === 0
         ? 'No boards available'
         : boardCount === 1
         ? '1 primary cell'
         : `${boardCount} primary cells`;
-
     return (
         <AdminDashboardLayout
             header={
@@ -41,7 +48,10 @@ export default function LeadershipIndex({ boards, activeRole }: LeadershipPagePr
                         {heading}
                     </h2>
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                        Active role: <span className="font-mono">{activeRole ?? '—'}</span> · Cross-cell submission deltas + primary health roll-ups
+                        Active role: <span className="font-mono">{activeRole ?? '—'}</span> ·{' '}
+                        {isLeader
+                            ? 'Engagement status across the primary cell(s) linked to your submissions'
+                            : 'Cross-cell submission deltas + primary health roll-ups'}
                     </p>
                 </div>
             }

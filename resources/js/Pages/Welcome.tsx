@@ -145,10 +145,15 @@ export default function Welcome({
                             <img
                                 src="/logos/logo1.png"
                                 alt="SBC"
-                                className="h-8 w-8 shrink-0 rounded-lg object-contain sm:h-10 sm:w-10"
+                                className="h-8 w-auto shrink-0 rounded-lg object-contain sm:h-9"
                             />
-                            <span className="truncate text-[18px] font-bold tracking-tight">
-                                SBC Guest Portal
+                            <span className="flex min-w-0 flex-col leading-tight">
+                                <span className="truncate text-[18px] font-bold tracking-tight">
+                                    SBC Portal
+                                </span>
+                                <span className="hidden truncate text-[10px] uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400 sm:block">
+                                    Impact Cell · Follow-up · Integration
+                                </span>
                             </span>
                         </Link>
 
@@ -421,8 +426,8 @@ export default function Welcome({
                     {/* Footer */}
                     <footer className="flex flex-col items-center justify-between gap-3 border-t border-gray-200/60 py-6 text-sm text-gray-500 dark:border-gray-800/60 dark:text-gray-400 sm:flex-row">
                         <p>
-                            &copy; {new Date().getFullYear()} SBC. All rights
-                            reserved.
+                            &copy; {new Date().getFullYear()} SBC Portal. All
+                            rights reserved.
                         </p>
                         <p className="inline-flex items-center gap-1.5">
                             Built by

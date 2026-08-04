@@ -145,7 +145,7 @@ class SettingsController extends Controller
 
         try {
             Mail::raw(
-                "This is a test email from the Impact Cell | Guest Portal.\n\n" .
+                "This is a test email from the SBC Portal.\n\n" .
                 "If you received this, your SMTP configuration is working correctly.\n\n" .
                 'Sent at: ' . now()->toIso8601String() . "\n" .
                 'Mail driver: ' . $data['mailer'] . "\n",

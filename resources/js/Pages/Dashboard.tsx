@@ -5,7 +5,6 @@ import DashboardTable, { Column } from '@/Components/DashboardTable';
 import EmptyState from '@/Components/EmptyState';
 import Greeting from '@/Components/Greeting';
 import KPICard from '@/Components/KPICard';
-import LeadershipBoard from '@/Components/LeadershipBoard';
 import LeadershipRollupWidget, { LeadershipRollupItem } from '@/Components/LeadershipRollupWidget';
 import StatusPill from '@/Components/StatusPill';
 import ViewOnlyBanner from '@/Components/ViewOnlyBanner';
@@ -16,8 +15,10 @@ import RecentActivityGrid, { RecentActivityTile } from '@/Components/RecentActiv
 import RecentRegistrationsFeed, { RegistrationItem } from '@/Components/RecentRegistrationsFeed';
 import SystemOverviewPanel, { SystemOverviewStats } from '@/Components/SystemOverviewPanel';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import DateRangeFilter from '@/Components/DateRangeFilter';
+import Modal from '@/Components/Modal';
+import { patchJson } from '@/lib/http';
 const OverviewAnalytics = lazy(() => import('@/Components/OverviewAnalytics'));
 
 type OfficerKpis = {
@@ -58,7 +59,17 @@ type LeaderKpis = {
     cellName: string;
     memberCount: number;
     weekSubmissions: number;
+    /** 2026-08-04 — report-type submissions only (was every submission type). */
     totalSubmissions: number;
+    /** 2026-08-04 — guests assigned to the current cell in the Not-Contacted bucket. */
+    pendingGuests: number;
+    /** 2026-08-04 — total guests assigned to the current cell (all buckets). */
+    totalAssigned: number;
+    assignedContacted: number;
+    assignedNotContacted: number;
+    assignedNotReachable: number;
+    /** 2026-08-04 — report submissions across ALL impact cells. */
+    overallReports: number;
 };
 
 type AdminKpis = {
@@ -468,7 +479,7 @@ function LeaderHeader({
                     <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">|</span>
                     <span>
                         <span data-testid="leader-header-total" className="font-semibold tabular-nums text-gray-700 dark:text-gray-300">{totalSubmissions}</span>{' '}
-                        total submissions
+                        reports submitted
                     </span>
                 </div>
             </div>
@@ -588,26 +599,38 @@ function ContactedStatusPill({ status }: { status: string | null }) {
 }
 
 function InlineStatusSelect({ guestId, currentStatus, isViewOnly }: { guestId: string; currentStatus: string | null; isViewOnly: boolean }) {
-    const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    // 2026-08-04 — local value mirrors props so the select reflects the
+    // optimistic update while the plain-JSON PATCH (fetch) is in flight
+    // (JSON endpoints get no Inertia re-render; see resources/js/lib/http.ts).
+    const [value, setValue] = useState<string>(currentStatus ?? '');
+    const [saved, setSaved] = useState(false);
+    const savedTimer = useRef<number | null>(null);
+
+    useEffect(() => { setValue(currentStatus ?? ''); }, [currentStatus]);
+    useEffect(() => () => { if (savedTimer.current) window.clearTimeout(savedTimer.current); }, []);
+
+    const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         if (isViewOnly) return;
         const newStatus = e.target.value || null;
-        router.patch(
-            route('guests.follow-up-status', guestId),
-            { follow_up_status: newStatus },
-            {
-                preserveScroll: true,
-                preserveState: true,
-                onError: () => { e.target.value = currentStatus ?? ''; },
-            },
-        );
+        const prev = value;
+        setValue(newStatus ?? '');
+        try {
+            await patchJson(route('guests.follow-up-status', guestId), { follow_up_status: newStatus });
+            setSaved(true);
+            if (savedTimer.current) window.clearTimeout(savedTimer.current);
+            savedTimer.current = window.setTimeout(() => setSaved(false), 2000);
+        } catch {
+            setValue(prev);
+        }
     };
 
     // Phase 13+ premium polish — switched to a Notion-style inline property
     // select: pill-shaped chrome, no heavy outline, soft hover/focus ring.
     return (
-        <div className={`relative inline-block ${isViewOnly ? 'opacity-60' : ''}`}>
+        <div className={`relative inline-flex items-center gap-2 ${isViewOnly ? 'opacity-60' : ''}`}>
+            <div className="relative inline-block">
             <select
-                value={currentStatus ?? ''}
+                value={value}
                 onChange={handleChange}
                 disabled={isViewOnly}
                 title={isViewOnly ? 'View-only mode — cannot edit' : 'Update follow-up status'}
@@ -630,6 +653,22 @@ function InlineStatusSelect({ guestId, currentStatus, isViewOnly }: { guestId: s
                     <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
             </span>
+            </div>
+
+            {/* 2026-08-04 — transient success confirmation after a status
+                update lands. Auto-dismisses after ~2s. */}
+            {saved && (
+                <span
+                    role="status"
+                    data-testid={`follow-up-saved-${guestId}`}
+                    className="motion-safe:animate-fade-in inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                >
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3" aria-hidden="true">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    Saved
+                </span>
+            )}
         </div>
     );
 }
@@ -652,6 +691,9 @@ const fileIconPath = (
     <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="9" y1="13" x2="15" y2="13" /><line x1="9" y1="17" x2="15" y2="17" /></>
 );
 function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[] }) {
+    // 2026-08-04 — the clickable "Pending Contacts" KPI smooth-scrolls to the
+    // My Queue section below (scroll-mt-24 clears the sticky page header).
+    const queueRef = useRef<HTMLDivElement>(null);
     const columns: Column<QueueRow>[] = [
         {
             header: 'Guest',
@@ -700,14 +742,22 @@ function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[
                 icon={zapIconPath}
             >
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                    <KPICard accent="indigo"  caption="Pending Contacts" value={kpis.pendingContacts} trend="≤ pending outreach" />
-                    <KPICard accent="emerald" caption="Total Calls"      value={kpis.totalCalls}      trend="guests contacted" />
-                    <KPICard accent="emerald" caption="Visited"          value={kpis.visited}         trend="confirmed visits" />
-                    <KPICard accent="amber"   caption="Pending Visit"    value={kpis.pendingVisit}    trend="available, awaiting visit" />
-                    <KPICard accent="default" caption="Response Rate"    value={`${kpis.responseRate.toFixed(1)}%`} trend="visited ÷ total calls" />
+                    <KPICard
+                        accent="indigo"
+                        caption="Pending Contacts"
+                        value={kpis.pendingContacts}
+                        clickHint="View queue"
+                        onClick={() => queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                        icon={officerIconPending}
+                    />
+                    <KPICard accent="emerald" caption="Total Calls"      value={kpis.totalCalls}      trend="guests contacted"      icon={officerIconCalls} />
+                    <KPICard accent="emerald" caption="Visited"          value={kpis.visited}         trend="confirmed visits"       icon={officerIconVisited} />
+                    <KPICard accent="amber"   caption="Pending Visit"    value={kpis.pendingVisit}    trend="available, awaiting visit" icon={officerIconPendingVisit} />
+                    <KPICard accent="default" caption="Response Rate"    value={`${kpis.responseRate.toFixed(1)}%`} trend="visited ÷ total calls" icon={officerIconResponse} />
                 </div>
             </DashboardSection>
 
+            <div ref={queueRef} className="scroll-mt-24">
             <DashboardSection
                 eyebrow="My Queue"
                 title="Assigned guests to follow up"
@@ -735,12 +785,16 @@ function OfficerDashboard({ kpis, queue }: { kpis: OfficerKpis; queue: QueueRow[
                     emptyIconPath={inboxIconPath}
                 />
             </DashboardSection>
+            </div>
         </div>
     );
 }
 
 function TeamDashboard({ kpis, queue, activeRole }: { kpis: TeamKpis; queue: TeamQueueRow[]; activeRole: string | null }) {
     const isViewOnly = activeRole === 'Follow_UP_View_Only';
+    // 2026-08-04 — the clickable "Pending Contacts" KPI smooth-scrolls to the
+    // Team Queue section below (scroll-mt-24 clears the sticky page header).
+    const queueRef = useRef<HTMLDivElement>(null);
 
     const columns: Column<TeamQueueRow>[] = [
         {
@@ -783,11 +837,13 @@ function TeamDashboard({ kpis, queue, activeRole }: { kpis: TeamKpis; queue: Tea
                 <button
                     type="button"
                     onClick={() => {
-                        router.patch(
-                            route('guests.follow-up-status', g.id),
-                            { follow_up_status: 'CONTACTED' },
-                            { preserveScroll: true, preserveState: true },
-                        );
+                        // 2026-08-04 — plain JSON endpoint: use fetch, then
+                        // partial-reload the queue so the row reflects the
+                        // server's new status (Inertia's router rejects plain
+                        // JSON responses with a full-screen error modal).
+                        patchJson(route('guests.follow-up-status', g.id), { follow_up_status: 'CONTACTED' })
+                            .then(() => router.reload({ only: ['queue'] }))
+                            .catch(() => {});
                     }}
                     data-testid={`mark-contacted-${g.id}`}
                     className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
@@ -807,13 +863,21 @@ function TeamDashboard({ kpis, queue, activeRole }: { kpis: TeamKpis; queue: Tea
                 icon={zapIconPath}
             >
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <KPICard accent="indigo"  caption="Pending Contacts" value={kpis.pendingContacts} trend="not yet contacted" />
-                    <KPICard accent="emerald" caption="Contacted Today"  value={kpis.contactedToday}  trend="contact sections logged today" />
-                    <KPICard accent="rose"    caption="Wrong Number"     value={kpis.wrongNumber}     trend="marked wrong number" />
-                    <KPICard accent="amber"   caption="Not Reachable"    value={kpis.notReachable}    trend="could not be reached" />
+                    <KPICard
+                        accent="indigo"
+                        caption="Pending Contacts"
+                        value={kpis.pendingContacts}
+                        clickHint="View queue"
+                        onClick={() => queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                        icon={leaderIconPending}
+                    />
+                    <KPICard accent="emerald" caption="Contacted Today"  value={kpis.contactedToday}  trend="contact sections logged today" icon={teamIconContacted} />
+                    <KPICard accent="rose"    caption="Wrong Number"     value={kpis.wrongNumber}     trend="marked wrong number"    icon={teamIconWrongNumber} />
+                    <KPICard accent="amber"   caption="Not Reachable"    value={kpis.notReachable}    trend="could not be reached"   icon={teamIconNotReachable} />
                 </div>
             </DashboardSection>
 
+            <div ref={queueRef} className="scroll-mt-24">
             <DashboardSection
                 eyebrow="Team Queue"
                 title="All assigned guests — operational queue"
@@ -845,6 +909,7 @@ function TeamDashboard({ kpis, queue, activeRole }: { kpis: TeamKpis; queue: Tea
                     compact
                 />
             </DashboardSection>
+            </div>
         </div>
     );
 }
@@ -855,6 +920,53 @@ const submissionTypeLabels: Record<string, string> = {
     childbirth: 'Childbirth',
     soul: 'Soul',
 };
+
+// 2026-08-04 — Lucide-style 24x24 stroke icons for the leader KPI cards
+// (rendered by KPICard's optional `icon` chip). Cell = network node graph,
+// Pending = clock, Assigned = user-plus, Overall Reports = globe.
+const leaderIconCell = (
+    <><rect x="9" y="2" width="6" height="6" rx="1" /><rect x="2" y="16" width="6" height="6" rx="1" /><rect x="16" y="16" width="6" height="6" rx="1" /><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" /><path d="M12 12V8" /></>
+);
+const leaderIconPending = (
+    <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>
+);
+const leaderIconAssigned = (
+    <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></>
+);
+const leaderIconOverall = (
+    <><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></>
+);
+
+// 2026-08-04 — Lucide-style 24x24 stroke icons for the Officer / Team KPI
+// cards. Outreach-themed: phone (pending), phone-call (calls made), map-pin
+// (visits), calendar (awaiting visit), percent (response rate), clock (team
+// pending), check-circle (contacted today), phone-off (wrong number),
+// signal-off (not reachable).
+const officerIconPending = (
+    <><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></>
+);
+const officerIconCalls = (
+    <><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /><path d="M14.05 2a9 9 0 0 1 8 7.94" /><path d="M14.05 6A5 5 0 0 1 18 10" /></>
+);
+const officerIconVisited = (
+    <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>
+);
+const officerIconPendingVisit = (
+    <><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></>
+);
+const officerIconResponse = (
+    <><line x1="19" y1="5" x2="5" y2="19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>
+);
+// teamIconPending reuses leaderIconPending (identical clock glyph).
+const teamIconContacted = (
+    <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>
+);
+const teamIconWrongNumber = (
+    <><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" /><line x1="22" y1="2" x2="2" y2="22" /></>
+);
+const teamIconNotReachable = (
+    <><path d="M5 5a15 15 0 0 1 14 0" /><path d="M8 8a10 10 0 0 1 8 0" /><path d="M11 11a5 5 0 0 1 2 0" /><path d="M12 16h.01" /><line x1="2" y1="2" x2="22" y2="22" /></>
+);
 
 function LeaderDashboard({
     kpis,
@@ -870,6 +982,24 @@ function LeaderDashboard({
     canEditImpactStatus?: boolean;
 }) {
     const hasCell = hasUsableCellName(kpis.cellName);
+    // 2026-08-04 — the clickable "Pending" / "Assigned Guests" KPIs open the
+    // full assigned-guests list (Not Contacted first) in a modal with the
+    // inline status pill editor.
+    const [assignedListOpen, setAssignedListOpen] = useState(false);
+    // Keyboard a11y — remember which element opened the modal so focus
+    // returns to it when the modal closes (Escape / backdrop / X). This
+    // makes the Escape-to-close flow land the user exactly where they were.
+    const assignedOpenerRef = useRef<HTMLElement | null>(null);
+    const openAssignedList = () => {
+        assignedOpenerRef.current = document.activeElement as HTMLElement | null;
+        setAssignedListOpen(true);
+    };
+    const closeAssignedList = () => {
+        setAssignedListOpen(false);
+        // Wait a frame so the HeadlessUI leave-transition doesn't swallow the
+        // focus call, then hand focus back to the card that opened the modal.
+        requestAnimationFrame(() => assignedOpenerRef.current?.focus());
+    };
 
     const subColumns: Column<RecentSubmission>[] = [
         {
@@ -911,44 +1041,73 @@ function LeaderDashboard({
 
     return (
         <div className="space-y-8">
-            {primaryCellId && (
-                <DashboardSection
-                    sectionTestId="leader-board-section"
-                    eyebrow="Leadership"
-                    title="Your leadership tree"
-                    description="Engagement status across each sub-cell under your primary cell."
-                    icon={usersIconPath}
-                    count={primaryCellId}
-                    action={
-                        <Link
-                            href={route('leadership.index')}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600"
-                        >
-                            View all boards
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
-                                <path d="M5 12h14M12 5l7 7-7 7" />
-                            </svg>
-                        </Link>
-                    }
-                >
-                    <LeadershipBoard cellId={primaryCellId} canView={true} />
-                </DashboardSection>
-            )}
-
+            {/* 2026-08-04 — Leadership info + Leadership Board card moved off the
+                Impact_Leaders dashboard. It now lives on the /leadership page
+                (Leadership Board side-menu item), which renders the same board
+                pre-computed server-side via LeadershipBoardController::index(). */}
             <DashboardSection
                 eyebrow="Cell Snapshot"
                 title={hasCell ? "Your cell in numbers" : "Set up your cell to begin"}
                 description={hasCell
-                    ? "At-a-glance totals for membership, weekly activity, and all-time submissions."
+                    ? "Membership, assigned guests by status, and report submissions for your cell."
                     : "Submit your first cell report from the quick-submit cards below to anchor your cell, or ask an administrator to assign you to one."}
                 icon={zapIconPath}
             >
                 {hasCell ? (
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                        <KPICard accent="indigo"  caption="Cell"        value={kpis.cellName} trend={kpis.memberCount > 0 ? `${kpis.memberCount} members` : 'No members'} />
-                        <KPICard accent="emerald" caption="Members"     value={kpis.memberCount} trend="registered in cell" />
-                        <KPICard accent="amber"   caption="This Week"   value={kpis.weekSubmissions} trend="submissions this week" />
-                        <KPICard accent="default" caption="Total"       value={kpis.totalSubmissions} trend="all submissions" />
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                        <KPICard accent="indigo"  caption="Cell"      value={kpis.cellName} trend={kpis.memberCount > 0 ? `${kpis.memberCount} members` : 'No members'} icon={leaderIconCell} />
+                        <KPICard accent="emerald" caption="Members"   value={kpis.memberCount} trend="registered in cell" icon={usersIconPath} />
+                        <KPICard
+                            accent="amber"
+                            caption="Pending"
+                            value={kpis.pendingGuests}
+                            clickHint="View pending guests"
+                            onClick={openAssignedList}
+                            onEscape={() => setAssignedListOpen(false)}
+                            icon={leaderIconPending}
+                        />
+                        <KPICard
+                            accent="blue"
+                            caption="Assigned Guests"
+                            value={kpis.totalAssigned}
+                            clickHint="Manage assigned guests"
+                            onClick={openAssignedList}
+                            onEscape={() => setAssignedListOpen(false)}
+                            icon={leaderIconAssigned}
+                        >
+                            <div className="space-y-1 border-t border-gray-100 pt-2 dark:border-gray-700" data-testid="assigned-breakdown">
+                                <div className="flex items-center justify-between text-[11px]">
+                                    <span className="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                        <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                                        Contacted
+                                    </span>
+                                    <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{kpis.assignedContacted}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px]">
+                                    <span className="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                        <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+                                        Not Contacted
+                                    </span>
+                                    <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">{kpis.assignedNotContacted}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px]">
+                                    <span className="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                        <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-rose-500" />
+                                        Not Reachable
+                                    </span>
+                                    <span className="font-semibold tabular-nums text-rose-600 dark:text-rose-400">{kpis.assignedNotReachable}</span>
+                                </div>
+                            </div>
+                        </KPICard>
+                        <KPICard accent="default" caption="Total" value={kpis.totalSubmissions} trend="reports submitted" icon={fileIconPath} />
+                        <KPICard
+                            accent="indigo"
+                            caption="Overall Reports"
+                            value={kpis.overallReports}
+                            clickHint="View reports"
+                            onClick={() => router.get(route('impact-submissions.my-reports'))}
+                            icon={leaderIconOverall}
+                        />
                     </div>
                 ) : (
                     <DashboardCard accent="indigo" className="px-5 py-5" dataCard="leader-cell-pending">
@@ -1128,6 +1287,79 @@ function LeaderDashboard({
                     emptyIconPath={usersIconPath}
                 />
             </DashboardSection>
+
+            {/* 2026-08-04 — assigned-guests list opened by the clickable
+                "Pending" KPI card. Pending (Not Contacted) guests sort first
+                (server-side); each row keeps the inline impact-status pill so
+                the leader can update statuses without leaving the modal. */}
+            <Modal
+                show={assignedListOpen}
+                onClose={closeAssignedList}
+                maxWidth="xl"
+                dataTestId="assigned-guests-modal"
+            >
+                <div className="p-5 sm:p-6">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <h3 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">
+                                Assigned Guests
+                            </h3>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                {hasCell ? kpis.cellName : 'Your cell'} · {kpis.totalAssigned} guest{kpis.totalAssigned === 1 ? '' : 's'} assigned — Not Contacted first
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={closeAssignedList}
+                            aria-label="Close"
+                            className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* 2026-08-04 — allow the modal to grow naturally; only scroll
+                        when the guest list approaches full viewport height. Status
+                        dropdowns are portaled to document.body (see
+                        InlineImpactStatusPill) so they float unclipped above this
+                        container and never force a scrollbar. */}
+                    <div className="mt-4 max-h-[85vh] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                        {assignedGuests.length === 0 ? (
+                            <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                                No guests are assigned to this cell yet.
+                            </div>
+                        ) : (
+                            <table className="min-w-full divide-y divide-gray-200 text-left dark:divide-gray-700" data-testid="assigned-guests-modal-table">
+                                <thead className="bg-gray-50 dark:bg-gray-800/80">
+                                    <tr>
+                                        <th scope="col" className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">Name</th>
+                                        <th scope="col" className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">Phone</th>
+                                        <th scope="col" className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">Impact Status</th>
+                                        <th scope="col" className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">Added</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 bg-white dark:divide-gray-800 dark:bg-gray-900/40">
+                                    {assignedGuests.map((g) => (
+                                        <tr key={g.id} className="transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50" data-testid={`assigned-modal-row-${g.id}`}>
+                                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900 dark:text-gray-100">{g.guestName}</td>
+                                            <td className="px-4 py-2.5 font-mono text-xs text-gray-700 dark:text-gray-300">{g.phone ?? '—'}</td>
+                                            <td className="px-4 py-2.5">
+                                                <InlineImpactStatusPill guestId={g.id} current={g.impactStatus} canEdit={canEditImpactStatus} />
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                                                {g.createdAt?.slice(0, 10) ?? '—'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }

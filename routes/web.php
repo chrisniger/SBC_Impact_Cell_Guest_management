@@ -165,6 +165,8 @@ Route::middleware('auth')->group(function () {
     Route::get   ('/csv/import',                          [\App\Http\Controllers\CsvImportController::class, 'index'])->name('csv.import');
     Route::post  ('/csv/import',                          [\App\Http\Controllers\CsvImportController::class, 'import'])->name('csv.import.upload');
     Route::get   ('/csv/export',                          [\App\Http\Controllers\CsvExportController::class, 'export'])->name('csv.export');
+    // Phase 10c — downloadable sample CSV per import template (Admin only).
+    Route::get   ('/csv/sample/{template?}',              [\App\Http\Controllers\CsvImportController::class, 'sample'])->name('csv.sample');
 
     // Phase 11 — Reports & Audit.
     Route::get   ('/reports',                             [\App\Http\Controllers\ReportsController::class, 'index'])->name('reports.index');

@@ -5,7 +5,7 @@ import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Impact Cell | Guest Portal';
+const appName = import.meta.env.VITE_APP_NAME || 'SBC Portal';
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,

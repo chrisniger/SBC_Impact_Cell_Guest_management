@@ -9,6 +9,7 @@ import SecondaryButton from '@/Components/SecondaryButton';
 import TextInput from '@/Components/TextInput';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { FormEventHandler, useEffect, useState } from 'react';
+import { patchJson } from '@/lib/http';
 
 interface UsersPaginationLink {
     url: string | null;
@@ -197,14 +198,14 @@ export default function AdminUsersIndex({
                                     cellsList={cellsList}
                                     isSelf={u.id === currentUserId}
                                     onSwitchRole={(role) => {
-                                        router.patch(
-                                            route('admin.users.update-role', u.id),
-                                            { role },
-                                            {
-                                                preserveScroll: true,
-                                                preserveState: false,
-                                            },
-                                        );
+                                        // 2026-08-04 — updateRole returns plain JSON;
+                                        // Inertia's router rejects non-Inertia responses
+                                        // with a full-screen error modal. Use fetch, then
+                                        // partial-reload the users table so the row's
+                                        // role badge/select reflect the new active role.
+                                        patchJson(route('admin.users.update-role', u.id), { role })
+                                            .then(() => router.reload({ only: ['users'] }))
+                                            .catch(() => {});
                                     }}
                                     onDelete={() => {
                                         if (confirm(`Remove user ${u.name}? This is a soft-delete (recoverable).`)) {

@@ -271,7 +271,15 @@ class DashboardController extends Controller
             ->whereDate('created_at', '>=', $thisWeek)
             ->count();
 
-        $totalSubmissions = ImpactSubmission::where('user_id', $user->id)->count();
+        // 2026-08-04 — user directive: the leader's "Total" card counts ONLY
+        // report-type submissions (was every submission type).
+        $totalSubmissions = ImpactSubmission::where('user_id', $user->id)
+            ->where('type', 'report')
+            ->count();
+
+        // 2026-08-04 — user directive: a system-wide "Overall Reports" card
+        // (every report submitted across ALL impact cells).
+        $overallReports = ImpactSubmission::where('type', 'report')->count();
 
         $favoriteCellId = ImpactSubmission::where('user_id', $user->id)
             ->whereNotNull('impact_cell_id')
@@ -296,11 +304,38 @@ class DashboardController extends Controller
             ->where('type', 'member')
             ->count();
 
+        // 2026-08-04 — user directive: assigned-guests KPI buckets for the
+        // leader dashboard. Pending = the "Not Contacted" bucket; NULL / '' /
+        // 'Not Contacted' / legacy values all count as pending so that
+        // Contacted + Not Contacted + Not Reachable === TOTAL (the breakdown
+        // card must sum exactly). Bucketed in PHP for MySQL/SQLite portability
+        // (same case/whitespace-defensive norming as the Phase 39 summary).
+        $assignedStatuses = $primaryCellId
+            ? Guest::query()->where('nearest_impact_cell_id', $primaryCellId)->pluck('impact_status')
+            : collect();
+        $assignedContacted    = 0;
+        $assignedNotContacted = 0;
+        $assignedNotReachable = 0;
+        foreach ($assignedStatuses as $st) {
+            $norm = strtolower(trim((string) $st));
+            if ($norm === 'contacted') {
+                $assignedContacted++;
+            } elseif ($norm === 'not reachable') {
+                $assignedNotReachable++;
+            } else {
+                $assignedNotContacted++;
+            }
+        }
+        $totalAssigned = $assignedStatuses->count();
+
+        // 2026-08-04 — user directive: the leader's clickable guest list shows
+        // ALL guests assigned to the cell with Pending (Not Contacted) first.
         $assignedGuests = $primaryCellId
             ? Guest::query()
                 ->where('nearest_impact_cell_id', $primaryCellId)
+                ->orderByRaw("CASE WHEN LOWER(TRIM(COALESCE(impact_status, ''))) IN ('', 'not contacted') THEN 0 WHEN LOWER(TRIM(COALESCE(impact_status, ''))) = 'contacted' THEN 1 ELSE 2 END")
                 ->orderByDesc('created_at')
-                ->limit(20)
+                ->limit(200)
                 ->get(['id', 'guest_name', 'phone', 'impact_status', 'created_at'])
                 ->map(fn (Guest $g) => [
                     'id'           => $g->id,
@@ -317,10 +352,16 @@ class DashboardController extends Controller
         return Inertia::render('Dashboard', [
             'variant'        => 'impactCell',
             'kpis'           => [
-                'cellName'         => $favoriteCell?->name ?? '—',
-                'memberCount'      => $memberCount,
-                'weekSubmissions'  => $weekCount,
-                'totalSubmissions' => $totalSubmissions,
+                'cellName'            => $favoriteCell?->name ?? '—',
+                'memberCount'         => $memberCount,
+                'weekSubmissions'     => $weekCount,
+                'totalSubmissions'    => $totalSubmissions,     // report-type only
+                'pendingGuests'       => $assignedNotContacted, // Not-Contacted bucket
+                'totalAssigned'       => $totalAssigned,
+                'assignedContacted'   => $assignedContacted,
+                'assignedNotContacted'=> $assignedNotContacted,
+                'assignedNotReachable'=> $assignedNotReachable,
+                'overallReports'      => $overallReports,       // system-wide reports
             ],
             'assignedGuests' => $assignedGuests,
             'recentSubmissions' => $recentSubmissions,

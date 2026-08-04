@@ -80,4 +80,26 @@ final class CsvColumns
             default => $base,
         };
     }
+
+    /**
+     * SAMPLE header-row columns per import template (Phase 10c).
+     *
+     * Used by CsvImportController::sample() to generate a downloadable sample
+     * CSV per existing CSV system (default / officer / team / impact). Headers
+     * are the canonical snake_case column names — every one doubles as a valid
+     * header alias inside `aliasesForTemplate`, so a downloaded sample
+     * re-imports cleanly even completely unedited. `guest_name` leads for
+     * human readability; the template branches mirror `aliasesForTemplate`.
+     */
+    public static function sampleColumnsForTemplate(?string $template): array
+    {
+        $base = ['guest_name', 'phone', 'email', 'event', 'source'];
+
+        return match ($template) {
+            'officer' => [...$base, 'contacted_status', 'visited'],
+            'team'    => [...$base, 'follow_up_status', 'follow_up_contacts'],
+            'impact'  => [...$base, 'impact_status', 'nearest_impact_cell_id'],
+            default   => $base,
+        };
+    }
 }

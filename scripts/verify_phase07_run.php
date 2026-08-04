@@ -62,6 +62,10 @@ function section(string $title): void {
 $layout     = file_get_contents(__DIR__ . '/../resources/js/Components/AdminSidebar.tsx');
 $dashboard  = file_get_contents(__DIR__ . '/../resources/js/Pages/Dashboard.tsx');
 $pill       = file_get_contents(__DIR__ . '/../resources/js/Components/InlineImpactStatusPill.tsx');
+// 2026-08-04 — the portal-dropdown positioning/dismissal logic (outside-
+// click close, flip-up placement) moved to the shared usePopperMenu hook;
+// [16] below checks the pill AND this hook.
+$popper     = file_get_contents(__DIR__ . '/../resources/js/lib/usePopperMenu.ts');
 $routes     = file_get_contents(__DIR__ . '/../routes/web.php');
 $dashCtrl   = file_get_contents(__DIR__ . '/../app/Http/Controllers/DashboardController.php');
 $subCtrl    = file_get_contents(__DIR__ . '/../app/Http/Controllers/ImpactSubmissionController.php');
@@ -226,14 +230,22 @@ section('InlineImpactStatusPill.tsx');
 $hasContacted      = has($pill, "'Contacted'") > -1;
 $hasNotContacted   = has($pill, "'Not Contacted'") > -1;
 $hasNotReachable   = has($pill, "'Not Reachable'") > -1;
-$hasRouterPatch    = has($pill, 'router.patch') > -1;
-check(15, "InlineImpactStatusPill.tsx has all 3 status options + router.patch()",
-    $hasContacted && $hasNotContacted && $hasNotReachable && $hasRouterPatch,
-    "missing status option or router.patch call");
+// 2026-08-04 — the pill calls the plain-JSON impact-status endpoint with
+// fetch() (patchJson), NOT router.patch: Inertia's router rejects non-
+// Inertia responses with the full-screen "All Inertia requests must receive
+// a valid Inertia response" modal. fetch + X-XSRF-TOKEN is the established
+// JSON-endpoint pattern (SoulSearch / roster / admin settings).
+$hasJsonPatch      = has($pill, 'patchJson(') > -1
+    && has($pill, '/guests/${guestId}/impact-status') > -1;
+check(15, "InlineImpactStatusPill.tsx has all 3 status options + patchJson()/fetch() to the impact-status JSON endpoint",
+    $hasContacted && $hasNotContacted && $hasNotReachable && $hasJsonPatch,
+    "missing status option OR the impact-status fetch() call (must not use router.patch — plain JSON responses break Inertia)");
 
 $hasOptimistic = has($pill, 'setStatus(prev)') > -1;
-$hasCloseOutside = has($pill, 'mousedown') > -1;
-check(16, "InlineImpactStatusPill.tsx has optimistic rollback + outside-click close",
+// 2026-08-04 — the outside-click close (mousedown) handler lives in the
+// shared usePopperMenu hook now; accept it from either file.
+$hasCloseOutside = has($pill, 'mousedown') > -1 || has($popper, 'mousedown') > -1;
+check(16, "InlineImpactStatusPill.tsx has optimistic rollback + outside-click close (shared usePopperMenu hook)",
     $hasOptimistic && $hasCloseOutside,
     "optimistic UI rollback or outside-click close handler missing");
 

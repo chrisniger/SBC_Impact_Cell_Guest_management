@@ -69,14 +69,14 @@ export default function Guest({ children }: PropsWithChildren) {
                             <img
                                 src="/logos/logo1.png"
                                 alt="SBC"
-                                className="h-12 w-12 rounded-xl bg-white/95 p-1.5 shadow-lg ring-1 ring-white/20 transition-transform group-hover:scale-105"
+                                className="h-11 w-auto drop-shadow-lg transition-transform group-hover:scale-105"
                             />
                             <div className="flex flex-col leading-tight">
                                 <span className="text-lg font-semibold tracking-tight">
-                                    SBC Guest Portal
+                                    SBC Portal
                                 </span>
                                 <span className="text-[11px] uppercase tracking-[0.18em] text-blue-100/70">
-                                    Outreach · Follow-up · Integration
+                                    Impact Cell · Follow-up · Integration
                                 </span>
                             </div>
                         </Link>
@@ -208,14 +208,14 @@ export default function Guest({ children }: PropsWithChildren) {
                             <img
                                 src="/logos/logo1.png"
                                 alt="SBC"
-                                className="h-9 w-9 rounded-lg object-contain ring-1 ring-gray-200 dark:ring-gray-700"
+                                className="h-8 w-auto object-contain"
                             />
                             <div className="flex flex-col leading-tight">
                                 <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                                    SBC Guest Portal
+                                    SBC Portal
                                 </span>
                                 <span className="text-[10px] uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                                    Mission Hub
+                                    Impact Cell · Follow-up · Integration
                                 </span>
                             </div>
                         </Link>
@@ -230,7 +230,7 @@ export default function Guest({ children }: PropsWithChildren) {
 
                     {/* Mobile footer */}
                     <footer className="border-t border-gray-200/60 px-6 py-4 text-center text-xs text-gray-500 lg:hidden dark:border-gray-800 dark:text-gray-400">
-                        © {year} SBC Guest Portal
+                        © {year} SBC Portal
                     </footer>
                 </main>
             </div>            {/* Phase 06c — `@keyframes fadeIn` was DROPPED here. The keyframe

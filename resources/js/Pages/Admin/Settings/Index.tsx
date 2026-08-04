@@ -271,7 +271,7 @@ export default function Settings() {
                                 type="text"
                                 value={form.from_name}
                                 onChange={e => set('from_name', e.target.value)}
-                                placeholder="Impact Cell | Guest Portal"
+                                placeholder="SBC Portal"
                                 className={inputClass}
                                 data-testid="smtp-from-name"
                             />
