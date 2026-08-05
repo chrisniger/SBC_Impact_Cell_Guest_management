@@ -51,8 +51,9 @@ class GuestResource extends JsonResource
             'address'        => $this->address,
 
             // Impact Cell group columns
-            'nearest_impact_cell_id' => $this->nearest_impact_cell_id,
-            'impact_status'          => $this->impact_status,
+            'nearest_impact_cell_id'   => $this->nearest_impact_cell_id,
+            'nearest_impact_cell_name' => $this->nearestImpactCell?->name,
+            'impact_status'            => $this->impact_status,
 
             // Follow Up Officer group columns
             'contacted_status'  => $this->contacted_status,

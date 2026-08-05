@@ -151,12 +151,11 @@ check(9, 'CsvImportController::import() responds with {created, skipped, errors}
 // [10] CsvImportController::import() skips rows with empty phone + reports in errors.
 // ---------------------------------------------------------------------------
 check(10, 'CsvImportController::import() skips rows with empty phone + reports in errors',
-    preg_match("/\\\$phone\\s*=\\s*trim\\s*\\(\\s*\\\$row\\[\\s*\\\$columnMap\\[\\s*'phone'\\s*\\]\\s*\\]\\s*\\?\\?\\s*''\\s*\\)/", $importSrc) === 1
+    preg_match("/\\\$phone\\s*=\\s*self::stripFormulaGuard\\s*\\(\\s*self::cell\\s*\\(\\s*\\\$columnMap\\s*,\\s*\\\$row\\s*,\\s*'phone'\\s*\\)\\s*\\)/", $importSrc) === 1
     && preg_match("/if\\s*\\(\\s*empty\\s*\\(\\s*\\\$phone\\s*\\)\\s*\\)\\s*\\{\\s*\\\$skipped\\s*\\+\\+\\s*;/", $importSrc) === 1
-    && preg_match("/\\\$skipDetails\\[\\]\\s*=\\s*\"/", $importSrc) === 1,
-    'must extract phone via trim($row[$columnMap[\'phone\']] ?? \'\') + skip+report when empty'
+    && preg_match("/\\\$skipDetails\\[\\]\\s*=\\s*\\\"/", $importSrc) === 1,
+    'must extract phone via self::cell($columnMap, $row, \'phone\') (trim + empty-default) + skip+report when empty'
 );
-
 // ---------------------------------------------------------------------------
 // [11] CsvExportController exists + has export() returning StreamedResponse.
 // ---------------------------------------------------------------------------

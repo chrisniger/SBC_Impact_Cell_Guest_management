@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Guest;
+use App\Models\ImpactCell;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Http\UploadedFile;
@@ -201,6 +202,11 @@ class CsvImportSampleTest extends TestCase
     public function test_sample_content_imports_through_the_regular_pipeline(): void
     {
         $admin = $this->makeUserWithRole('Administrator');
+
+        // The impact sample's example row names the real seeded cell
+        // 'EFAB WARU' (the importer resolves names → UUIDs), so the test
+        // DB must hold that cell for the unedited sample to re-import.
+        ImpactCell::create(['name' => 'EFAB WARU', 'is_primary' => true, 'order' => 1]);
 
         // Replicates the frontend 'Import to test' button: fetch the sample
         // for a template, randomize the example phone (so a fresh guest is

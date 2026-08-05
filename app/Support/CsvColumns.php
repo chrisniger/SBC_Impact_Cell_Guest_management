@@ -74,7 +74,14 @@ final class CsvColumns
             // Impact template: surface impact-group-owned columns.
             'impact' => $base + [
                 'impact_status'          => ['impact status', 'impact_status', 'cell'],
-                'nearest_impact_cell_id' => ['cell id', 'cell_id', 'nearest impact cell'],
+                // Canonical snake_case name first (the sample CSV header + the
+                // most common hand-written header) — it was missing before,
+                // so a `nearest_impact_cell_id` column silently never mapped.
+                'nearest_impact_cell_id' => [
+                    'nearest_impact_cell_id', 'cell id', 'cell_id',
+                    'nearest impact cell', 'nearest impact cell id',
+                    'cell name', 'impact cell', 'impact cell name',
+                ],
             ],
             // Unknown / null template: base only.
             default => $base,

@@ -41,8 +41,10 @@ set_error_handler(function (int $errno, string $errstr, string $errfile, int $er
 // ---------------------------------------------------------------------------
 function detectPhpBinary(): string {
     $candidates = [
+        getenv('PHP_BINARY'),
         getenv('PHP_BIN'),
         $_SERVER['_'] ?? null, // argv[0] of the running script — usually the php binary on most setups
+        \PHP_BINARY, // full path of the running CLI binary — reliable on Windows
     ];
     foreach ($candidates as $c) {
         if (is_string($c) && $c !== '' && is_executable($c)) {

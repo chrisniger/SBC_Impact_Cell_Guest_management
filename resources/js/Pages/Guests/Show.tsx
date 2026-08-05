@@ -19,6 +19,7 @@ interface GuestDetail {
     email: string | null;
     address: string | null;
     nearest_impact_cell_id: string | null;
+    nearest_impact_cell_name?: string | null;
     impact_status: string | null;
     contacted_status: string | null;
     join_when: string | null;
@@ -208,7 +209,7 @@ export default function Show({ guest, editableFields, activeRole }: { guest: Gue
 
                     <Card title="Impact Cell" iconPath={cellIcon} testId="card-cell">
                         <dl>
-                            <DisplayField label="Nearest Impact Cell" value={guest.nearest_impact_cell_id} mono />
+                            <DisplayField label="Nearest Impact Cell" value={guest.nearest_impact_cell_name ?? guest.nearest_impact_cell_id} />
                             <DisplayField label="Impact status" value={guest.impact_status} />
                         </dl>
                     </Card>

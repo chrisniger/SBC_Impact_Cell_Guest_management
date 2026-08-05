@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Guest;
+use App\Models\ImpactCell;
 use App\Support\CsvColumns;
+use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -54,8 +56,20 @@ class CsvImportController extends Controller
         $skipped = 0;
         $skipDetails = [];
 
+        // One-time lookup tables for impact-cell resolution, built ONCE per
+        // import instead of a DB query per row with a cell value (bulk CSVs
+        // are thousands of rows). Keys are lowercased so both cell names and
+        // UUIDs resolve case-insensitively (mirroring the MySQL ci collation
+        // the whereKey()/whereRaw() lookups used to rely on).
+        $cellIdByLower = [];
+        $cellIdByName = [];
+        foreach (ImpactCell::all(['id', 'name']) as $cell) {
+            $cellIdByLower[mb_strtolower($cell->id)] = $cell->id;
+            $cellIdByName[mb_strtolower(trim($cell->name))] = $cell->id;
+        }
+
         foreach ($dataRows as $rowIndex => $row) {
-            $phone = self::stripFormulaGuard(trim($row[$columnMap['phone']] ?? ''));
+            $phone = self::stripFormulaGuard(self::cell($columnMap, $row, 'phone'));
 
             if (empty($phone)) {
                 $skipped++;
@@ -70,7 +84,7 @@ class CsvImportController extends Controller
                 continue;
             }
 
-            $email = self::stripFormulaGuard(trim($row[$columnMap['email']] ?? ''));
+            $email = self::stripFormulaGuard(self::cell($columnMap, $row, 'email'));
 
             // Phase 10b — email format validation. Mirrors the `email` rule in
             // GuestRequest byte-for-byte via Laravel's Validator facade (NOT
@@ -90,11 +104,11 @@ class CsvImportController extends Controller
             }
 
             $data = [
-                'guest_name' => self::stripFormulaGuard(trim($row[$columnMap['guest_name']] ?? '')),
+                'guest_name' => self::stripFormulaGuard(self::cell($columnMap, $row, 'guest_name')),
                 'phone'      => $phone,
                 'email'      => $email,
-                'event'      => self::stripFormulaGuard(trim($row[$columnMap['event']] ?? '')),
-                'source'     => self::stripFormulaGuard(trim($row[$columnMap['source']] ?? '')),
+                'event'      => self::stripFormulaGuard(self::cell($columnMap, $row, 'event')),
+                'source'     => self::stripFormulaGuard(self::cell($columnMap, $row, 'source')),
             ];
 
             // Phase 10c — persist the template-specific columns too. Phase 10
@@ -103,6 +117,8 @@ class CsvImportController extends Controller
             // dropped them, so officer/team/impact sample files lost their
             // extended fields on re-import. Only present columns are written;
             // a plain (default-template) CSV keeps its legacy behaviour.
+            $skipRow = false;
+
             foreach (['contacted_status', 'visited', 'follow_up_status', 'follow_up_contacts', 'impact_status', 'nearest_impact_cell_id'] as $field) {
                 if (! isset($columnMap[$field])) {
                     continue;
@@ -122,7 +138,31 @@ class CsvImportController extends Controller
                     continue;
                 }
 
+                if ($field === 'nearest_impact_cell_id') {
+                    // The column is a UUID FK to impact_cells.id. Real-world
+                    // CSVs put a cell NAME here ("EFAB WARU") or a cell UUID.
+                    // Resolve either to the real UUID before writing — a raw
+                    // name string would either 500 the whole batch on the FK
+                    // constraint or be unmappable to a display name later.
+                    // Unresolvable values skip the row with a clear error
+                    // (same contract as missing phone / duplicate phone /
+                    // invalid email above).
+                    $resolved = self::resolveImpactCellId($value, $cellIdByLower, $cellIdByName);
+                    if ($resolved === null) {
+                        $skipped++;
+                        $skipDetails[] = "Row " . ($rowIndex + 2) . ": unknown impact cell '{$value}'";
+                        $skipRow = true;
+                        break;
+                    }
+                    $data[$field] = $resolved;
+                    continue;
+                }
+
                 $data[$field] = $value;
+            }
+
+            if ($skipRow) {
+                continue;
             }
 
             Guest::create($data);
@@ -144,6 +184,47 @@ class CsvImportController extends Controller
             'skipped'    => $skipped,
             'errors'     => $skipDetails,
         ]);
+    }
+
+    /**
+     * Read a CSV cell by canonical field, safe when the header row didn't
+     * map the field at all (returns ''). Mirrors the `$row[$i] ?? ''`
+     * tolerance for short rows, and fixes the pre-existing 500 when a CSV
+     * omits a base header (e.g. `email`) — `$columnMap[$field]` used to be
+     * read unguarded, which threw "Undefined array key" and aborted the
+     * whole batch.
+     */
+    private static function cell(array $columnMap, array $row, string $field): string
+    {
+        $index = $columnMap[$field] ?? null;
+
+        return $index === null ? '' : trim($row[$index] ?? '');
+    }
+
+    /**
+     * Resolve a CSV-provided `nearest_impact_cell_id` value to a real impact
+     * cell UUID. Accepts either:
+     *   - the cell's UUID (passed through when the row exists), or
+     *   - the cell NAME (case-insensitive exact match — "EFAB WARU" and
+     *     "efab waru" both resolve to the same cell).
+     * Returns null for empty values and values that match no cell; the
+     * caller decides the row-level consequence (skip + error detail).
+     *
+     * @param array<string,string> $cellIdByLower lowercase-UUID → canonical UUID
+     * @param array<string,string> $cellIdByName  lowercase-name → canonical UUID
+     */
+    private static function resolveImpactCellId(string $value, array $cellIdByLower, array $cellIdByName): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (Str::isUuid($value)) {
+            return $cellIdByLower[mb_strtolower($value)] ?? null;
+        }
+
+        return $cellIdByName[mb_strtolower($value)] ?? null;
     }
 
     /**
@@ -191,7 +272,15 @@ class CsvImportController extends Controller
             'follow_up_status'       => 'NOT CONTACTED',
             'follow_up_contacts'     => '[]',
             'impact_status'          => 'Not Contacted',
-            'nearest_impact_cell_id' => '',
+            // First real primary cell (or '' when the DB has none) — the
+            // importer resolves the name to the cell's UUID, so a sample
+            // saved as-is and re-imported (Phase 10e "Import to test" flow)
+            // lands on an actual cell in ANY deployment, not a hardcoded
+            // name that may not exist elsewhere.
+            'nearest_impact_cell_id' => ImpactCell::query()
+                ->where('is_primary', true)
+                ->orderBy('order')
+                ->value('name') ?? '',
         ];
 
         $row = array_map(static fn (string $column) => $example[$column] ?? '', $columns);
