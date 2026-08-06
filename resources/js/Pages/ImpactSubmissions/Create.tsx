@@ -403,7 +403,7 @@ function SubmitReportForm({
                         data-testid="report-receipt-input"
                     />
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Optional — attach an image, photo from camera, or PDF receipt.
+                        Attach an image, photo from camera, or PDF receipt.
                     </p>
                 </FormField>
             </div>

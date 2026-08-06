@@ -66,6 +66,11 @@ Route::middleware('auth')->group(function () {
     // Phase 05/06/07 will flesh out the per-group dashboards.
     Route::get   ('/guests',                  [\App\Http\Controllers\GuestController::class, 'index'])->name('guests.index');
     Route::post  ('/guests',                  [\App\Http\Controllers\GuestController::class, 'store'])->name('guests.store');
+    // Guest create form — MUST be registered BEFORE /guests/{id} so Laravel's
+    // first-match-wins routing doesn't dispatch GET /guests/create into the
+    // show handler with id="create" (which would 404 on the UUID findOrFail).
+    // Same rule as impact-cells.create (Phase 17).
+    Route::get   ('/guests/create',          [\App\Http\Controllers\GuestController::class, 'create'])->name('guests.create');
     // Phase 39 — JSON roster for the Assigned Guests inline expandable rows.
     // MUST be registered BEFORE /guests/{id} so 'roster' isn't captured as an id.
     Route::get   ('/guests/roster',           [\App\Http\Controllers\GuestController::class, 'roster'])->name('guests.roster');

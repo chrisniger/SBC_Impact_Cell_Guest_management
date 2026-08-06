@@ -42,7 +42,7 @@ class CsvImportSampleTest extends TestCase
         $admin = $this->makeUserWithRole('Administrator');
 
         $cases = [
-            ''        => ['guest_name', 'phone', 'email', 'event', 'source'],
+            ''        => ['guest_name', 'phone', 'event'],
             'officer' => ['contacted_status', 'visited'],
             'team'    => ['follow_up_status', 'follow_up_contacts'],
             'impact'  => ['impact_status', 'nearest_impact_cell_id'],
@@ -63,7 +63,7 @@ class CsvImportSampleTest extends TestCase
 
             $this->assertCount(2, $lines, "template '{$template}' should have header + one example row");
             $headers = array_map('strtolower', $lines[0]);
-            foreach (array_merge(['guest_name', 'phone', 'email', 'event', 'source'], $extraColumns) as $col) {
+            foreach (array_merge(['guest_name', 'phone', 'event'], $extraColumns) as $col) {
                 $this->assertContains($col, $headers, "template '{$template}' missing header {$col}");
             }
             // Example row must have a phone (the importer's hard requirement).
@@ -132,7 +132,7 @@ class CsvImportSampleTest extends TestCase
         $this->seedExportGuest();
 
         $cases = [
-            'default' => ['guest_name', 'phone', 'email', 'event', 'source'],
+            'default' => ['guest_name', 'phone', 'event'],
             'officer' => ['contacted_status', 'visited'],
             'team'    => ['follow_up_status', 'follow_up_contacts'],
             'impact'  => ['impact_status', 'nearest_impact_cell_id'],
@@ -150,7 +150,7 @@ class CsvImportSampleTest extends TestCase
             $this->assertGreaterThanOrEqual(2, count($lines), "{$template} export should have header + at least the seeded guest");
 
             $headers = array_map('strtolower', $lines[0]);
-            foreach (array_merge(['guest_name', 'phone', 'email', 'event', 'source'], $extraColumns) as $col) {
+            foreach (array_merge(['guest_name', 'phone', 'event'], $extraColumns) as $col) {
                 $this->assertContains($col, $headers, "{$template} export missing header {$col}");
             }
         }
@@ -237,8 +237,10 @@ class CsvImportSampleTest extends TestCase
         // = + - @ (CSV formula-injection guard). Re-importing such a file
         // must strip the guard so the stored cell is the original content,
         // not "'=SUM(A1)". The apostrophe on a plain value ('John) survives.
-        $csv = "guest_name,phone,email,event,source,impact_status\n"
-            . "'=SUM(A1),08050000005,guard@example.com,'+234 Sunday Service,'@mentions,'=Not Contacted\n";
+        // email + source are deliberately off the CSV surface (UX request),
+        // so they're not part of the header here either.
+        $csv = "guest_name,phone,event,impact_status\n"
+            . "'=SUM(A1),08050000005,'+234 Sunday Service,'=Not Contacted\n";
 
         $response = $this->actingAs($admin)->post(route('csv.import.upload'), [
             'csv'      => UploadedFile::fake()->createWithContent('guests.csv', $csv),
@@ -252,8 +254,37 @@ class CsvImportSampleTest extends TestCase
         $this->assertNotNull($guest);
         $this->assertSame('=SUM(A1)', $guest->guest_name);
         $this->assertSame('+234 Sunday Service', $guest->event);
-        $this->assertSame('@mentions', $guest->source);
+        // `source` was removed from the CSV surface (UX request) — the column
+        // exists in the DB but is no longer read from CSV files.
+        $this->assertNull($guest->source);
         $this->assertSame('=Not Contacted', $guest->impact_status);
+    }
+
+    // ─── Sub-assertion 11 — UTF-8 BOM in the CSV is stripped before header mapping ─
+    public function test_utf8_bom_in_csv_is_stripped_before_header_mapping(): void
+    {
+        $admin = $this->makeUserWithRole('Administrator');
+
+        // Excel / Windows-saved CSVs commonly start with a UTF-8 BOM. Before
+        // the fix, the BOM rode along on the first header cell
+        // ("\u{FEFF}guest name"), which failed every alias match — so every
+        // row reported "missing guest name" even when the file was valid.
+        $csv = "\xEF\xBB\xBFguest_name,phone,event,impact_status,nearest_impact_cell_id\n"
+            . "Bom Test Guest,08050000006,SUNDAY SERVICE,Not Contacted,\n";
+
+        $response = $this->actingAs($admin)->post(route('csv.import.upload'), [
+            'csv'      => UploadedFile::fake()->createWithContent('bom-guests.csv', $csv),
+            'template' => 'impact',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(['created' => 1, 'skipped' => 0, 'errors' => []], $response->json());
+
+        $guest = Guest::where('phone', '08050000006')->first();
+        $this->assertNotNull($guest);
+        $this->assertSame('Bom Test Guest', $guest->guest_name);
+        $this->assertSame('SUNDAY SERVICE', $guest->event);
+        $this->assertSame('Not Contacted', $guest->impact_status);
     }
 
     // ─── Sub-assertion 4 — legacy default template stays base-fields-only ─
@@ -309,7 +340,7 @@ class CsvImportSampleTest extends TestCase
     protected function tearDown(): void
     {
         DB::table('activity_log')->where('log_name', 'csv-import')->delete();
-        Guest::whereIn('phone', ['08077700001', '08060000001', '08050000005'])->forceDelete();
+        Guest::whereIn('phone', ['08077700001', '08060000001', '08050000005', '08050000006'])->forceDelete();
         parent::tearDown();
     }
 }

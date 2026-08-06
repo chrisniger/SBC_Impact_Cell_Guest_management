@@ -109,6 +109,47 @@ class GuestController extends Controller
     }
 
     /**
+     * GET /guests/create — render the create form (Administrator + FollowUpOfficer).
+     *
+     * Mirrors edit()'s prop contract so Create.tsx renders the exact same
+     * inputs the role is allowed to write (single source of truth: the
+     * `editableFields` list from RoleHelper::stripDisallowed).
+     *
+     * Authorization uses the policy's `create` gate (Administrator always;
+     * FollowUpOfficer / Follow_UP_Admin self-assign on store).
+     */
+    public function create(Request $request): Response
+    {
+        $this->authorize('create', Guest::class);
+
+        $user = $request->user();
+        $role = $user?->activeRole();
+        $editableKeys = $this->computeEditableKeysForRole($role);
+
+        // Only load the Impact Cell dropdown if the user can edit it.
+        $impactCells = in_array('nearest_impact_cell_id', $editableKeys, true)
+            ? \App\Models\ImpactCell::orderBy('name')->get(['id', 'name'])->toArray()
+            : [];
+
+        // Administrator can assign a follow-up officer at creation time;
+        // non-admins self-assign server-side (store()), so no roster needed.
+        $officers = $role === 'Administrator'
+            ? \App\Models\User::whereHas('roles', fn ($q) => $q->whereIn('name', ['FollowUpOfficer', 'Follow_UP_Admin']))
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->toArray()
+            : [];
+
+        return Inertia::render('Guests/Create', [
+            'editableFields'      => $editableKeys,
+            'impactCells'         => $impactCells,
+            'officers'            => $officers,
+            'impactStatusOptions' => Guest::IMPACT_STATUSES,
+            'activeRole'          => $role,
+        ]);
+    }
+
+    /**
      * Phase 39 — Impact_Cell_Admin "Assigned Guests" surface.
      *
      * Without `?cell=` this renders Guests/Assigned: a per-cell overview

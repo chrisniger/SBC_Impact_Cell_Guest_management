@@ -113,11 +113,15 @@ check(5, 'CsvImportController::import() admin-gated + validates csv file + templ
 );
 
 // ---------------------------------------------------------------------------
-// [6] CsvImportController::import() parses with str_getcsv + file() per spec.
+// [6] CsvImportController::import() parses with str_getcsv per line after
+// stripping a UTF-8 BOM (preg_split + PREG_SPLIT_NO_EMPTY).
 // ---------------------------------------------------------------------------
-check(6, 'CsvImportController::import() parses with str_getcsv + file() (CSV parsing per spec)',
-    preg_match("/array_map\\s*\\(\\s*'str_getcsv'\\s*,\\s*file\\s*\\(\\s*\\\$file->getRealPath\\s*\\(\\s*\\)\\s*\\)\\s*\\)/", $importSrc) === 1,
-    'must use `array_map(\'str_getcsv\', file($file->getRealPath()))` per spec CSV parsing contract'
+check(6, 'CsvImportController::import() parses with str_getcsv per line after stripping a UTF-8 BOM (preg_split + PREG_SPLIT_NO_EMPTY)',
+    str_contains($importSrc, 'str_getcsv')
+    && str_contains($importSrc, 'preg_split')
+    && str_contains($importSrc, 'PREG_SPLIT_NO_EMPTY')
+    && str_contains($importSrc, '\xEF\xBB\xBF'),
+    'must parse with str_getcsv over BOM-stripped lines (preg_split /\r\n|\r|\n/ + PREG_SPLIT_NO_EMPTY) so a UTF-8 BOM never rides on the first header cell and every row reports missing guest name'
 );
 
 // ---------------------------------------------------------------------------
@@ -198,10 +202,10 @@ check(13, 'app/Support/CsvColumns::forRole Admin branch covers all 3 group-owned
 // uses ONLY a positive exact-array match on the fallback return — since the regex's character-by-character
 // string match would fail if any extra element were inserted, it INHERENTLY proves the fallback excludes the
 // impact-cell + follow-officer + follow-team columns without needing a separate negative check.
-check(14, 'app/Support/CsvColumns::forRole fallback returns exactly 8-col officer/team subset (positive exact-list match — inherently excludes any added group-owned column); CsvExportController delegates via CsvColumns::forRole($role)',
-    preg_match("/'guest_name'\\s*,\\s*'phone'\\s*,\\s*'email'\\s*,\\s*'event'\\s*,\\s*'source'\\s*,\\s*'contacted_status'\\s*,\\s*'visited'\\s*,\\s*'created_at'/", $csvColumnsSrc) === 1
+check(14, 'app/Support/CsvColumns::forRole fallback returns exactly 6-col officer/team subset (positive exact-list match — inherently excludes any added group-owned column); CsvExportController delegates via CsvColumns::forRole($role)',
+    preg_match("/'guest_name'\\s*,\\s*'phone'\\s*,\\s*'event'\\s*,\\s*'contacted_status'\\s*,\\s*'visited'\\s*,\\s*'created_at'/", $csvColumnsSrc) === 1
     && str_contains($exportSrc, 'CsvColumns::forRole'),
-    'fallback (in CsvColumns::forRole) must return exactly [guest_name, phone, email, event, source, contacted_status, visited, created_at] in that order; CsvExportController calls CsvColumns::forRole($role)'
+    'fallback (in CsvColumns::forRole) must return exactly [guest_name, phone, event, contacted_status, visited, created_at] in that order (email + source removed per UX request); CsvExportController calls CsvColumns::forRole($role)'
 );
 
 // ---------------------------------------------------------------------------

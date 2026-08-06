@@ -31,13 +31,37 @@ class CsvImportController extends Controller
         ]);
 
         $file = $request->file('csv');
-        $rows = array_map('str_getcsv', file($file->getRealPath()));
+
+        // Strip a UTF-8 BOM if present (Excel / Windows-saved CSVs commonly
+        // prepend one). `trim()` does NOT remove the invisible \xEF\xBB\xBF
+        // marker, so an unchecked BOM would ride along on the first header
+        // cell ("\u{FEFF}guest name") and fail every alias match below — the
+        // importer would then report "missing guest name" on every row even
+        // though the CSV is perfectly valid.
+        $content = file_get_contents($file->getRealPath()) ?: '';
+        if (str_starts_with($content, "\xEF\xBB\xBF")) {
+            $content = substr($content, 3);
+        }
+
+        // Split on any line-ending convention (\r\n, \n, \r) and str_getcsv
+        // each line — same per-line parsing contract as file() + str_getcsv,
+        // but over the BOM-stripped content so the header alias map sees
+        // clean bytes. PREG_SPLIT_NO_EMPTY drops fully-blank separator rows
+        // (a blank line is not a data row) while `,,,` rows still survive
+        // to be reported as missing-phone.
+        $rows = array_map('str_getcsv', preg_split('/\r\n|\r|\n/', $content, -1, PREG_SPLIT_NO_EMPTY));
 
         if (empty($rows) || count($rows) < 2) {
             return response()->json(['created' => 0, 'skipped' => 0, 'errors' => ['No data rows found.']]);
         }
 
-        $headers = array_map('strtolower', array_map('trim', $rows[0]));
+        // Belt-and-braces: also ltrim any BOM bytes off each header cell so
+        // the alias match is robust even if the content-level strip above
+        // ever runs on a file that was mutated between read and parse.
+        $headers = array_map(
+            static fn (string $header) => ltrim(strtolower(trim($header)), "\xEF\xBB\xBF"),
+            $rows[0],
+        );
         $dataRows = array_slice($rows, 1);
 
         $aliasMap = CsvColumns::aliasesForTemplate($request->string('template')->toString());
