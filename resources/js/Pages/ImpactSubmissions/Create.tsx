@@ -317,6 +317,7 @@ function SubmitReportForm({
         impact_cell_id: assignedCell?.id ?? '', fellowship_date: '',
         adults: '0', children: '0', first_timers: '0', new_members: '0',
         offering_hq: '0',
+        receipt_file: null as File | null,
     });
     const [submitting, setSubmitting] = useState(false);
     const [serverError, setServerError] = useState('');
@@ -326,19 +327,24 @@ function SubmitReportForm({
         if (submitting) return;
         setSubmitting(true);
         setServerError('');
-        router.post('/impact-submissions', {
-            impact_cell_id: form.impact_cell_id,
-            type: 'report',
-            fellowship_date_key: form.fellowship_date,
-            data: {
-                fellowship_date: form.fellowship_date,
-                adults: parseInt(form.adults) || 0,
-                children: parseInt(form.children) || 0,
-                first_timers: parseInt(form.first_timers) || 0,
-                new_members: parseInt(form.new_members) || 0,
-                offering_hq: parseFloat(form.offering_hq) || 0,
-            },
-        }, {
+
+        const formData = new FormData();
+        formData.append('impact_cell_id', form.impact_cell_id);
+        formData.append('type', 'report');
+        formData.append('fellowship_date_key', form.fellowship_date);
+        formData.append('data', JSON.stringify({
+            fellowship_date: form.fellowship_date,
+            adults: parseInt(form.adults) || 0,
+            children: parseInt(form.children) || 0,
+            first_timers: parseInt(form.first_timers) || 0,
+            new_members: parseInt(form.new_members) || 0,
+            offering_hq: parseFloat(form.offering_hq) || 0,
+        }));
+        if (form.receipt_file) {
+            formData.append('receipt', form.receipt_file);
+        }
+
+        router.post('/impact-submissions', formData, {
             preserveScroll: true,
             onSuccess: () => setSubmitting(false),
             onError: (errs) => { setSubmitting(false); setServerError(Object.values(errs).join(', ')); },
@@ -380,8 +386,25 @@ function SubmitReportForm({
                 <FormField label="New Members" id="report-new">
                     <input id="report-new" type="number" min="0" value={form.new_members} onChange={set('new_members')} className={inputCls} />
                 </FormField>
-                <FormField label="Offering (HQ)" id="report-offer-hq">
+                <FormField label="Offering" id="report-offer-hq">
                     <input id="report-offer-hq" type="number" min="0" step="0.01" value={form.offering_hq} onChange={set('offering_hq')} className={inputCls} />
+                </FormField>
+                <FormField label="Add Receipt" id="report-receipt">
+                    <input
+                        id="report-receipt"
+                        type="file"
+                        accept="image/*,.pdf"
+                        capture="environment"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) setForm(prev => ({ ...prev, receipt_file: file as any }));
+                        }}
+                        className={`${inputCls} file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100`}
+                        data-testid="report-receipt-input"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Optional — attach an image, photo from camera, or PDF receipt.
+                    </p>
                 </FormField>
             </div>
         </FormShell>

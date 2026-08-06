@@ -1,0 +1,53 @@
+
+I use to add /opt/alt/php84/usr/bin/php before every Laravel command 
+
+SAMPLE..
+cd /home/u188660189/domains/app.summitdata.one/public_html
+
+/opt/alt/php84/usr/bin/php artisan config:cache
+/opt/alt/php84/usr/bin/php artisan route:cache
+/opt/alt/php84/usr/bin/php artisan view:cache
+/opt/alt/php84/usr/bin/php artisan event:cache
+
+END SAMPLE
+
+
+# 1. SSH in
+ssh u188660189@ssh.hostinger.com
+ 
+# 2. Project root — the folder where composer.json lives (run `pwd` to confirm)
+cd /home/u188660189/domains/app.summitdata.one/public_html
+ 
+# 3. Full-path binaries (plain php/npm don't resolve in this SSH shell)
+PHP=/opt/alt/php84/usr/bin/php
+export PATH=/opt/alt/alt-nodejs22/root/bin:$PATH
+ 
+# 4. Pull the update branch
+git pull origin update
+ 
+# 5. Composer + frontend build (skip npm if no JS/React changes in the pull)
+$PHP /opt/alt/php84/usr/bin/composer install --optimize-autoloader --no-dev --no-interaction --prefer-dist
+npm ci --no-audit --no-fund && npm run build
+ 
+# 6. Migrate + idempotent seeders (both safe to re-run)
+$PHP artisan migrate --force --no-interaction
+$PHP artisan db:seed --class=RolesAndPermissionsSeeder --force
+$PHP artisan db:seed --class=ImpactCellSeeder --force
+ 
+# 7. Cache trio + storage link (RE-RUN after any .env change too!)
+$PHP artisan config:cache && $PHP artisan route:cache && $PHP artisan view:cache && $PHP artisan storage:link
+ 
+# 8. Permissions
+chmod -R 775 storage bootstrap/cache && chown -R u188660189:www-data storage bootstrap/cache
+ 
+# 9. Verify
+curl -s -o /dev/null -w 'home: %{http_code}\n' https://app.summitdata.one/
+curl -s -o /dev/null -w 'register: %{http_code}\n' https://app.summitdata.one/register
+#    Expect 200 for both. Hard-refresh the browser (Ctrl-Shift-R) after.
+
+# SSH in, cd to project root, then:
+PHP=/opt/alt/php84/usr/bin/php
+$PHP artisan db:seed --class=AdminUserSeeder --force
+$PHP artisan db:seed --class=FollowUpOfficerSeeder --force
+$PHP artisan db:seed --class=FollowUpTeamSeeder --force
+$PHP artisan db:seed --class=ZonalCoordinatorSeeder --force

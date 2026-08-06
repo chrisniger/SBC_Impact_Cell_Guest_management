@@ -108,9 +108,27 @@ class ImpactSubmissionController extends Controller
         $validated = $request->validate([
             'impact_cell_id'     => ['required', 'uuid', 'exists:impact_cells,id'],
             'type'               => ['required', 'string', 'in:' . implode(',', self::TYPES)],
-            'data'               => ['required', 'array'],
+            'data'               => ['required'],
             'fellowship_date_key' => ['nullable', 'string', 'max:64'],
+            'receipt'            => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:10240'],
         ]);
+
+        // Decode JSON data — the frontend sends `data` as a JSON string when
+        // using FormData (multipart form for file uploads), or as a native
+        // array when no file is attached (standard POST).
+        $data = $validated['data'];
+        if (is_string($data)) {
+            $data = json_decode($data, true);
+        }
+        if (! is_array($data)) {
+            $data = [];
+        }
+
+        // Store receipt file if uploaded
+        if ($request->hasFile('receipt')) {
+            $path = $request->file('receipt')->store('receipts', 'public');
+            $data['receipt_path'] = $path;
+        }
 
         if ($validated['type'] === 'report' && !empty($validated['fellowship_date_key'])) {
             $existing = ImpactSubmission::where('impact_cell_id', $validated['impact_cell_id'])
@@ -129,7 +147,7 @@ class ImpactSubmissionController extends Controller
             'impact_cell_id'     => $validated['impact_cell_id'],
             'user_id'            => $user->id,
             'type'               => $validated['type'],
-            'data'               => $validated['data'],
+            'data'               => $data,
             'fellowship_date_key' => $validated['fellowship_date_key'] ?? null,
         ]);
 

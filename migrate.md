@@ -281,3 +281,51 @@ I will then tell you what to work on. Stay stopped after the hand-off summary.
   - Default DB in `.env.example`
   - Package manager change (pnpm → npm or vice versa)
   - Major version bumps of PHP / Node / Laravel
+
+
+#============================================================================== Production Command
+
+# 2. Go to project root
+cd /home/u188660189/domains/app.summitdata.one/public_html
+
+# 3. Enable Node.js
+export PATH=/opt/alt/alt-nodejs22/root/bin:$PATH
+
+# 4. Pull latest code
+git pull origin update
+
+# 5. Install PHP dependencies
+/opt/alt/php84/usr/bin/php composer.phar install --optimize-autoloader --no-dev --no-interaction --prefer-dist
+
+
+# 6. Install frontend dependencies and build
+npm ci --no-audit --no-fund
+npm run build
+
+# 7. Run database migrations
+/opt/alt/php84/usr/bin/php artisan migrate --force --no-interaction
+
+# 8. Seed required data
+/opt/alt/php84/usr/bin/php artisan db:seed --class=RolesAndPermissionsSeeder --force
+/opt/alt/php84/usr/bin/php artisan db:seed --class=ImpactCellSeeder --force
+
+# Optional seeders
+/opt/alt/php84/usr/bin/php artisan db:seed --class=AdminUserSeeder --force
+/opt/alt/php84/usr/bin/php artisan db:seed --class=FollowUpOfficerSeeder --force
+/opt/alt/php84/usr/bin/php artisan db:seed --class=FollowUpTeamSeeder --force
+/opt/alt/php84/usr/bin/php artisan db:seed --class=ZonalCoordinatorSeeder --force
+
+# 9. Optimize caches
+/opt/alt/php84/usr/bin/php artisan config:cache
+/opt/alt/php84/usr/bin/php artisan route:cache
+/opt/alt/php84/usr/bin/php artisan view:cache
+/opt/alt/php84/usr/bin/php artisan event:cache
+/opt/alt/php84/usr/bin/php artisan storage:link
+
+# 10. Fix permissions
+chmod -R 775 storage bootstrap/cache
+chown -R u188660189:www-data storage bootstrap/cache
+
+# 11. Verify deployment
+curl -s -o /dev/null -w 'home: %{http_code}\n' https://app.summitdata.one/
+curl -s -o /dev/null -w 'register: %{http_code}\n' https://app.summitdata.one/register

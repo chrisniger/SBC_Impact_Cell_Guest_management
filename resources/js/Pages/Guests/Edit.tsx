@@ -206,7 +206,7 @@ export default function Edit({ guest, editableFields, impactCells, impactStatusO
                 )}
 
                 <form onSubmit={submit} className="space-y-6">
-                    {(canEdit('guest_name') || canEdit('date') || canEdit('event') || canEdit('source') || canEdit('event_other')) && (
+                    {(canEdit('guest_name') || canEdit('date') || canEdit('event') || canEdit('event_other')) && (
                         <Card title="Core" iconPath={userIcon} testId="card-edit-core">
                             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                 {canEdit('guest_name') && (
@@ -225,12 +225,6 @@ export default function Edit({ guest, editableFields, impactCells, impactStatusO
                                     <FormField label="Event" id="event" error={fieldErr('event')}>
                                         <input id="event" type="text" value={data.event ?? ''}
                                             onChange={(e) => setData('event', e.target.value)} className={inputCls} />
-                                    </FormField>
-                                )}
-                                {canEdit('source') && (
-                                    <FormField label="Source" id="source" error={fieldErr('source')}>
-                                        <input id="source" type="text" value={data.source ?? ''}
-                                            onChange={(e) => setData('source', e.target.value)} className={inputCls} />
                                     </FormField>
                                 )}
                                 {canEdit('event_other') && (

@@ -30,7 +30,7 @@ final class CsvColumns
     {
         if ($role === 'Administrator') {
             return [
-                'guest_name', 'phone', 'email', 'address', 'event', 'event_other', 'source',
+                'guest_name', 'phone', 'address', 'event', 'event_other',
                 'contacted_status', 'visited',
                 'follow_up_status', 'follow_up_contacts',
                 'nearest_impact_cell_id', 'follow_officer_id', 'created_at',
@@ -39,7 +39,7 @@ final class CsvColumns
 
         // Officer + Team subset (group-owned columns excluded).
         return [
-            'guest_name', 'phone', 'email', 'event', 'source',
+            'guest_name', 'phone', 'event',
             'contacted_status', 'visited', 'created_at',
         ];
     }
@@ -55,9 +55,7 @@ final class CsvColumns
         $base = [
             'phone'      => ['phone', 'phone number', 'mobile', 'tel', 'telephone'],
             'guest_name' => ['name', 'guest name', 'full name', 'guest_name', 'fullname'],
-            'email'      => ['email', 'e-mail', 'email address'],
             'event'      => ['event', 'service', 'meeting'],
-            'source'     => ['source', 'referral', 'how they heard'],
         ];
 
         return match ($template) {
@@ -100,7 +98,7 @@ final class CsvColumns
      */
     public static function sampleColumnsForTemplate(?string $template): array
     {
-        $base = ['guest_name', 'phone', 'email', 'event', 'source'];
+        $base = ['guest_name', 'phone', 'event'];
 
         return match ($template) {
             'officer' => [...$base, 'contacted_status', 'visited'],

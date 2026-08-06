@@ -365,6 +365,23 @@ class GuestController extends Controller
             ->with('success', "Guest {$name} deleted.");
     }
 
+    /** POST /guests/bulk-delete — Administrator only, soft-deletes multiple guests. */
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()?->activeRole() === 'Administrator', 403);
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['string', 'uuid', 'exists:guests,id'],
+        ]);
+
+        $count = Guest::whereIn('id', $validated['ids'])->delete();
+
+        return redirect()
+            ->route('guests.index')
+            ->with('success', "{$count} guest(s) deleted.");
+    }
+
     /**
      * PATCH /guests/{id}/follow-up-status — Phase 06 inline update.
      *
@@ -478,7 +495,7 @@ class GuestController extends Controller
     {
         $allPossible = array_merge(
             RoleHelper::allGroupOwnedFields(),
-            ['guest_name', 'date', 'event', 'event_other', 'source', 'follow_officer_id']
+            ['guest_name', 'date', 'event', 'event_other', 'follow_officer_id']
         );
 
         return array_keys(

@@ -1007,11 +1007,43 @@ function LeaderDashboard({
             cell: (s) => <span className="font-medium text-gray-900 dark:text-gray-100">{submissionTypeLabels[s.type] ?? s.type}</span>,
         },
         { header: 'Cell', cell: (s) => <span className="text-sm text-gray-700 dark:text-gray-300">{s.cellName ?? '—'}</span> },
-        { header: 'Preview', cell: (s) => <span className="text-sm text-gray-600 dark:text-gray-400">{s.preview}</span> },
+        {
+            header: 'Preview',
+            cell: (s) => (
+                <Link
+                    href={route('impact-submissions.show', s.id)}
+                    className="text-sm text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    aria-label={`View ${submissionTypeLabels[s.type] ?? s.type}: ${s.preview}`}
+                >
+                    {s.preview}
+                </Link>
+            ),
+        },
         {
             header: 'Date',
             align: 'right',
-            cell: (s) => <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{s.createdAt?.slice(0, 10) ?? '—'}</span>,
+            cell: (s) => (
+                <Link
+                    href={route('impact-submissions.show', s.id)}
+                    className="text-xs tabular-nums text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    aria-label={`View submission from ${s.createdAt?.slice(0, 10) ?? 'unknown date'}`}
+                >
+                    {s.createdAt?.slice(0, 10) ?? '—'}
+                </Link>
+            ),
+        },
+        {
+            header: '',
+            align: 'right',
+            cell: (s) => (
+                <Link
+                    href={route('impact-submissions.show', s.id)}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    data-testid={`view-submission-${s.id}`}
+                >
+                    View →
+                </Link>
+            ),
         },
     ];
 

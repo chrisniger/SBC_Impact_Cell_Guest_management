@@ -83,6 +83,9 @@ Route::middleware('auth')->group(function () {
     // Mirrors Phase 06 follow-up-status: lightweight JSON endpoint, no Inertia redirect.
     Route::patch('/guests/{id}/impact-status', [\App\Http\Controllers\GuestController::class, 'updateImpactStatus'])->name('guests.impact-status');
 
+    // Admin-only bulk-delete endpoint for the /guests index page.
+    Route::post('/guests/bulk-delete', [\App\Http\Controllers\GuestController::class, 'bulkDelete'])->name('guests.bulk-delete');
+
     // Phase 08 — Leadership Board (JSON endpoint for primary cell health).
     Route::get('/leadership-board/{cellId}', [\App\Http\Controllers\LeadershipBoardController::class, 'show'])->name('leadership-board.show');
 

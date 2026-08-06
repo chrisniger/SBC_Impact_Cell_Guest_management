@@ -84,31 +84,20 @@ class CsvImportController extends Controller
                 continue;
             }
 
-            $email = self::stripFormulaGuard(self::cell($columnMap, $row, 'email'));
+            $guestName = self::stripFormulaGuard(self::cell($columnMap, $row, 'guest_name'));
 
-            // Phase 10b — email format validation. Mirrors the `email` rule in
-            // GuestRequest byte-for-byte via Laravel's Validator facade (NOT
-            // PHP's `filter_var(FILTER_VALIDATE_EMAIL)`, which is RFC 822 and
-            // accepts trailing dots like `foo@bar.com.` — Laravel's default
-            // `email` rule uses Egulias/RFC 5321 which rejects them). Skip
-            // the row (counted + surfaced via $skipDetails) instead of erroring
-            // the entire batch — consistent with the existing phone-presence +
-            // duplicate-phone handling above.
-            if ($email !== '' && Validator::make(
-                ['email' => $email],
-                ['email' => ['nullable', 'string', 'email', 'max:255']],
-            )->fails()) {
+            // Skip rows with empty guest name — required field, same contract
+            // as missing phone (the guest record is useless without a name).
+            if ($guestName === '') {
                 $skipped++;
-                $skipDetails[] = "Row " . ($rowIndex + 2) . ": invalid email format";
+                $skipDetails[] = "Row " . ($rowIndex + 2) . ": missing guest name";
                 continue;
             }
 
             $data = [
-                'guest_name' => self::stripFormulaGuard(self::cell($columnMap, $row, 'guest_name')),
+                'guest_name' => $guestName,
                 'phone'      => $phone,
-                'email'      => $email,
                 'event'      => self::stripFormulaGuard(self::cell($columnMap, $row, 'event')),
-                'source'     => self::stripFormulaGuard(self::cell($columnMap, $row, 'source')),
             ];
 
             // Phase 10c — persist the template-specific columns too. Phase 10
@@ -264,9 +253,7 @@ class CsvImportController extends Controller
         $example = [
             'guest_name'             => 'John Doe',
             'phone'                  => '08012345678',
-            'email'                  => 'john.doe@example.com',
             'event'                  => 'Sunday Service',
-            'source'                 => 'Welcome Desk',
             'contacted_status'       => 'AvailableForVisit',
             'visited'                => 'false',
             'follow_up_status'       => 'NOT CONTACTED',
